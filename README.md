@@ -8,12 +8,17 @@ A Rust CLI application that uses AI to automatically organize your files by anal
 - **Smart Organization**: Creates logical directory structures based on file relationships
 - **Multiple File Types**: Supports text, images, PDFs, and code files
 - **User Approval**: Shows reorganization plan before making changes
-- **OpenAI Integration**: Uses OpenAI models for intelligent file analysis
+- **Multiple AI Providers**: Supports OpenAI, Anthropic, and Ollama models
+- **Concurrent Processing**: Analyzes up to 10 files simultaneously with progress bars
+- **Model Filtering**: Filter large model lists by typing (e.g., "gpt-4" or "claude-3")
 
 ## Prerequisites
 
 - Rust (latest stable version)
-- OpenAI API key
+- At least one of:
+  - OpenAI API key
+  - Anthropic API key  
+  - Ollama running locally
 
 ## Installation
 
@@ -24,9 +29,17 @@ cd fs-organiser
 cargo build --release
 ```
 
-2. Set up your OpenAI API key:
+2. Set up your API keys (choose one or more):
 ```bash
-export OPENAI_API_KEY="your_api_key_here"
+# For OpenAI
+export OPENAI_API_KEY="your_openai_key_here"
+
+# For Anthropic
+export ANTHROPIC_API_KEY="your_anthropic_key_here"
+
+# For Ollama (make sure it's running)
+ollama serve
+ollama pull llama2  # or any other model
 ```
 
 ## Usage
@@ -51,12 +64,14 @@ cargo run -- /path/to/directory --dry-run
 
 ## How It Works
 
-1. **Scan Directory**: Recursively scans the target directory for files
-2. **Analyze Filenames**: Determines if filenames are descriptive enough
-3. **Content Analysis**: For non-descriptive files, analyzes content to suggest better names
-4. **Structure Planning**: Creates an optimal directory organization plan
-5. **User Approval**: Shows the plan and asks for confirmation
-6. **Execution**: Moves files to their new locations with better names
+1. **Provider Selection**: Choose between OpenAI, Anthropic, or Ollama
+2. **Model Selection**: Pick from available models with optional filtering
+3. **Scan Directory**: Recursively scans the target directory for files
+4. **Concurrent Analysis**: Analyzes filenames in parallel (up to 10 at once) with progress bars
+5. **Content Analysis**: For non-descriptive files, generates better names concurrently
+6. **Structure Planning**: Creates an optimal directory organization plan
+7. **User Approval**: Shows the plan and asks for confirmation
+8. **Execution**: Moves files to their new locations with better names
 
 ## Supported File Types
 

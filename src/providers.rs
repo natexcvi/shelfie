@@ -1,19 +1,23 @@
 use anyhow::{anyhow, Result};
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 use rig::client::ProviderClient;
-use rig::providers::openai;
+use rig::providers::{anthropic, ollama, openai};
 use serde::Deserialize;
 use std::env;
 
 #[derive(Debug, Clone)]
 pub enum Provider {
     OpenAI,
+    Anthropic,
+    Ollama,
 }
 
 impl std::fmt::Display for Provider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Provider::OpenAI => write!(f, "OpenAI"),
+            Provider::Anthropic => write!(f, "Anthropic"),
+            Provider::Ollama => write!(f, "Ollama (Local)"),
         }
     }
 }
@@ -28,6 +32,27 @@ struct OpenAIModelsResponse {
     data: Vec<OpenAIModel>,
 }
 
+#[derive(Debug, Deserialize)]
+struct AnthropicModel {
+    name: String,
+    display_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AnthropicModelsResponse {
+    models: Vec<AnthropicModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaModel {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaModelsResponse {
+    models: Vec<OllamaModel>,
+}
+
 pub struct LLMProvider {
     provider: Provider,
     model_name: String,
@@ -35,7 +60,14 @@ pub struct LLMProvider {
 
 impl LLMProvider {
     pub async fn new() -> Result<Self> {
-        let provider = Provider::OpenAI;
+        let providers = vec![Provider::OpenAI, Provider::Anthropic, Provider::Ollama];
+
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select LLM Provider")
+            .items(&providers)
+            .interact()?;
+
+        let provider = providers[selection].clone();
         let model_name = Self::select_model(&provider).await?;
 
         Ok(Self {
@@ -45,10 +77,26 @@ impl LLMProvider {
     }
 
     async fn select_model(provider: &Provider) -> Result<String> {
-        let models = Self::list_models(provider).await?;
+        let mut models = Self::list_models(provider).await?;
 
         if models.is_empty() {
             return Err(anyhow!("No models available for {:?}", provider));
+        }
+
+        // Ask for filter if there are many models
+        if models.len() > 10 {
+            let filter: String = Input::with_theme(&ColorfulTheme::default())
+                .with_prompt("Filter models (e.g., 'gpt-5', 'claude-4', or press Enter for all)")
+                .allow_empty(true)
+                .interact_text()?;
+
+            if !filter.is_empty() {
+                models.retain(|model| model.to_lowercase().contains(&filter.to_lowercase()));
+
+                if models.is_empty() {
+                    return Err(anyhow!("No models match filter '{}'", filter));
+                }
+            }
         }
 
         let selection = Select::with_theme(&ColorfulTheme::default())
@@ -62,6 +110,8 @@ impl LLMProvider {
     async fn list_models(provider: &Provider) -> Result<Vec<String>> {
         match provider {
             Provider::OpenAI => Self::list_openai_models().await,
+            Provider::Anthropic => Self::list_anthropic_models().await,
+            Provider::Ollama => Self::list_ollama_models().await,
         }
     }
 
@@ -94,8 +144,64 @@ impl LLMProvider {
         Ok(model_names)
     }
 
+    async fn list_anthropic_models() -> Result<Vec<String>> {
+        let api_key =
+            env::var("ANTHROPIC_API_KEY").map_err(|_| anyhow!("ANTHROPIC_API_KEY not set"))?;
+
+        let client = reqwest::Client::new();
+        let response = client
+            .get("https://api.anthropic.com/v1/models")
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .send()
+            .await;
+
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                let models: AnthropicModelsResponse = resp.json().await?;
+                Ok(models.models.iter().map(|m| m.name.clone()).collect())
+            }
+            _ => Ok(vec![
+                "claude-4-sonnet-latest".to_string(),
+                "claude-4-haiku-latest".to_string(),
+                "claude-4-opus-latest".to_string(),
+            ]),
+        }
+    }
+
+    async fn list_ollama_models() -> Result<Vec<String>> {
+        let base_url = env::var("OLLAMA_API_BASE_URL")
+            .unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let client = reqwest::Client::new();
+        let response = client.get(format!("{}/api/tags", base_url)).send().await;
+
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                let models: OllamaModelsResponse = resp.json().await?;
+                if models.models.is_empty() {
+                    Err(anyhow!(
+                        "No models installed in Ollama. Run 'ollama pull <model>' first"
+                    ))
+                } else {
+                    Ok(models.models.iter().map(|m| m.name.clone()).collect())
+                }
+            }
+            _ => Err(anyhow!(
+                "Cannot connect to Ollama. Make sure it's running (ollama serve)"
+            )),
+        }
+    }
+
     pub fn get_openai_client(&self) -> Result<openai::Client> {
         Ok(openai::Client::from_env())
+    }
+
+    pub fn get_anthropic_client(&self) -> Result<anthropic::Client> {
+        Ok(anthropic::Client::from_env())
+    }
+
+    pub fn get_ollama_client(&self) -> Result<ollama::Client> {
+        Ok(ollama::Client::from_env())
     }
 
     pub fn get_model_name(&self) -> &str {
