@@ -50,8 +50,13 @@ impl FileOrganizer {
             let new_name = self.suggest_filename(&file).await?;
             println!("→ {}", new_name.green());
             
+            let relative_path = file.path.strip_prefix(&self.base_path)
+                .unwrap_or(&file.path)
+                .to_string_lossy()
+                .to_string();
+            
             file_infos.push(FileInfo {
-                path: file.path.to_string_lossy().to_string(),
+                path: relative_path,
                 suggested_name: Some(new_name),
                 file_type: format!("{:?}", file.extension),
                 description: file.get_content_preview(),
@@ -60,8 +65,13 @@ impl FileOrganizer {
         
         for file in &self.files {
             if !files_to_rename.iter().any(|f| f.path == file.path) {
+                let relative_path = file.path.strip_prefix(&self.base_path)
+                    .unwrap_or(&file.path)
+                    .to_string_lossy()
+                    .to_string();
+                
                 file_infos.push(FileInfo {
-                    path: file.path.to_string_lossy().to_string(),
+                    path: relative_path,
                     suggested_name: None,
                     file_type: format!("{:?}", file.extension),
                     description: file.get_content_preview(),
@@ -124,10 +134,17 @@ impl FileOrganizer {
     async fn create_directory_structure(&self, files: &[FileInfo]) -> Result<DirectoryStructure> {
         let mut file_descriptions = String::new();
         for (i, file) in files.iter().enumerate() {
+            // Extract just the filename for the AI prompt
+            let file_path = PathBuf::from(&file.path);
+            let relative_path = file_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(&file.path);
+            
             file_descriptions.push_str(&format!(
                 "{}. File: {} (Type: {}) - {}\n",
                 i + 1,
-                file.path,
+                relative_path,
                 file.file_type,
                 file.description.chars().take(100).collect::<String>()
             ));
@@ -135,17 +152,17 @@ impl FileOrganizer {
         
         let prompt = format!(
             "Create an optimal directory structure for organizing these files. \
-            Base directory: '{}'. \
+            You are organizing files within a single directory.
             
             Files to organize:
             {}
             
             Please provide:
-            1. A list of directory paths that should be created (e.g., ['documents', 'images', 'code/python'])
-            2. File placements showing where each file should go with new names
+            1. A list of directory paths that should be created (e.g., ['documents', 'images', 'code/python']). Use relative paths only, no absolute paths.
+            2. File placements showing where each file should go with new names. Use relative directory paths only.
             
-            Group related files together and create meaningful directory names.",
-            self.base_path.display(),
+            Group related files together and create meaningful directory names. \
+            Do NOT include the parent directory name in your structure.",
             file_descriptions
         );
         
@@ -197,7 +214,7 @@ impl FileOrganizer {
         
         // Move files to their new locations
         for placement in &structure.file_placements {
-            let from = PathBuf::from(&placement.original_path);
+            let from = self.base_path.join(&placement.original_path);
             let to_dir = self.base_path.join(&placement.new_directory);
             let to_file = to_dir.join(&placement.new_name);
             
