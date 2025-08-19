@@ -81,7 +81,7 @@ impl FileOrganizer {
             file_infos.push(FileInfo {
                 path: relative_path,
                 suggested_name: Some(new_name.clone()),
-                file_type: format!("{:?}", file.extension),
+                file_type: file.get_type_description(),
                 description: file.get_content_preview(),
             });
         }
@@ -99,14 +99,14 @@ impl FileOrganizer {
                 file_infos.push(FileInfo {
                     path: relative_path,
                     suggested_name: None,
-                    file_type: format!("{:?}", file.extension),
+                    file_type: file.get_type_description(),
                     description: file.get_content_preview(),
                 });
             }
         }
 
         println!(
-            "\n{}",
+            "\n\n{}",
             "Step 3: Creating optimal directory structure..."
                 .green()
                 .bold()
@@ -210,10 +210,12 @@ impl FileOrganizer {
     async fn analyze_filename(&self, file: &AnalyzedFile) -> Result<bool> {
         let prompt = format!(
             "Analyze if the filename '{}' is indicative of its content. \
+            Detected file type: {}. \
             File extension: {:?}. \
             Content preview: {}. \
             Return true if the name clearly indicates what the file contains, false otherwise.",
             file.name,
+            file.get_type_description(),
             file.extension,
             file.get_content_preview()
         );
@@ -228,10 +230,12 @@ impl FileOrganizer {
         let prompt = format!(
             "Based on this file's content, suggest a better, more descriptive filename. \
             Current name: '{}'. \
+            Detected file type: {}. \
             Extension: {:?}. \
             Content: {}. \
             Provide a clear, descriptive name without the extension.",
             file.name,
+            file.get_type_description(),
             file.extension,
             file.get_content_preview()
         );
