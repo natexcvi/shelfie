@@ -208,13 +208,22 @@ impl FileOrganizer {
     }
 
     async fn analyze_filename(&self, file: &AnalyzedFile) -> Result<bool> {
+        let relative_path = file
+            .path
+            .strip_prefix(&self.base_path)
+            .unwrap_or(&file.path)
+            .to_string_lossy()
+            .to_string();
+
         let prompt = format!(
             "Analyze if the filename '{}' is indicative of its content. \
+            File path: {}. \
             Detected file type: {}. \
             File extension: {:?}. \
             Content preview: {}. \
             Return true if the name clearly indicates what the file contains, false otherwise.",
             file.name,
+            relative_path,
             file.get_type_description(),
             file.extension,
             file.get_content_preview()
