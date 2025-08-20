@@ -2,10 +2,12 @@ use anyhow::{anyhow, Result};
 use dialoguer::{theme::ColorfulTheme, Input, Select};
 use rig::client::ProviderClient;
 use rig::providers::{anthropic, ollama, openai};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::env;
 
-#[derive(Debug, Clone)]
+use crate::config::Config;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Provider {
     OpenAI,
     Anthropic,
@@ -60,6 +62,45 @@ pub struct LLMProvider {
 
 impl LLMProvider {
     pub async fn new() -> Result<Self> {
+        // Try to load existing config first
+        if let Some(config) = Config::load()? {
+            println!("Using saved configuration: {} with model {}", 
+                format!("{:?}", config.provider), 
+                config.model_name
+            );
+            
+            return Ok(Self {
+                provider: config.provider,
+                model_name: config.model_name,
+            });
+        }
+
+        // If no config exists, prompt user and save the selection
+        let providers = vec![Provider::OpenAI, Provider::Anthropic, Provider::Ollama];
+
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select LLM Provider")
+            .items(&providers)
+            .interact()?;
+
+        let provider = providers[selection].clone();
+        let model_name = Self::select_model(&provider).await?;
+
+        // Save the configuration
+        let config = Config {
+            provider: provider.clone(),
+            model_name: model_name.clone(),
+        };
+        config.save()?;
+
+        Ok(Self {
+            provider,
+            model_name,
+        })
+    }
+
+    pub async fn new_interactive() -> Result<Self> {
+        // Force new provider selection (ignore existing config)
         let providers = vec![Provider::OpenAI, Provider::Anthropic, Provider::Ollama];
 
         let selection = Select::with_theme(&ColorfulTheme::default())
