@@ -159,7 +159,10 @@ impl AnalyzedFile {
         if text.len() <= MAX_PREVIEW_CHARS {
             text.to_string()
         } else {
-            format!("{}...", text.chars().take(MAX_PREVIEW_CHARS).collect::<String>())
+            format!(
+                "{}...",
+                text.chars().take(MAX_PREVIEW_CHARS).collect::<String>()
+            )
         }
     }
 

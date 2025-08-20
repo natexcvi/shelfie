@@ -47,10 +47,10 @@ pub struct ItemMetadata {
     pub id: String,
     pub name: String,
     pub item_type: String,
-    pub extension: Option<String>,
-    pub size_bytes: Option<u64>,
-    pub sampled_contents: Option<Vec<String>>, // For directories
-    pub content_preview: Option<String>,        // For files needing content
+    pub extension: String,            // Use empty string if no extension
+    pub size_bytes: u64,             // Use 0 for directories or unknown
+    pub sampled_contents: Vec<String>, // Use empty vec for files
+    pub content_preview: String,      // Use empty string if no preview
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -81,7 +81,7 @@ pub struct BatchAnalysisResponse {
 pub struct ItemAnalysis {
     pub id: String,
     pub description: String,
-    pub suggested_name: Option<String>,
+    pub suggested_name: String, // Use empty string if no suggestion
     pub needs_content_read: bool,
     pub is_opaque_directory: bool,
     pub cabinet: CabinetAssignment,
@@ -90,16 +90,20 @@ pub struct ItemAnalysis {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
-pub enum CabinetAssignment {
-    Existing { id: i64 },
-    New { name: String, description: String },
+pub struct CabinetAssignment {
+    pub assignment_type: String, // "existing" or "new"
+    pub existing_id: i64,        // Use 0 for new assignments
+    pub new_name: String,        // Use empty string for existing assignments
+    pub new_description: String, // Use empty string for existing assignments
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
-pub enum ShelfAssignment {
-    Existing { id: i64 },
-    New { name: String, description: String },
+pub struct ShelfAssignment {
+    pub assignment_type: String, // "existing" or "new"
+    pub existing_id: i64,        // Use 0 for new assignments
+    pub new_name: String,        // Use empty string for existing assignments
+    pub new_description: String, // Use empty string for existing assignments
 }
 
 // Organization preview structures
