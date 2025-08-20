@@ -214,3 +214,43 @@ fn copy_test_files_to_temp(temp_dir: &Path) -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_pdf_panic_handling() -> Result<()> {
+    let test_dir = Path::new("test_dir");
+    if !test_dir.exists() {
+        println!("Skipping PDF panic handling test - test_dir not found");
+        return Ok(());
+    }
+
+    // Test PDF processing with the real PDF file
+    let pdf_file = test_dir.join("2502.08966v2.pdf");
+    if pdf_file.exists() {
+        // This should not panic even if the PDF extraction fails
+        match AnalyzedFile::new(pdf_file) {
+            Ok(analyzed_file) => {
+                println!("✓ PDF file processed successfully without panicking");
+                let preview = analyzed_file.get_content_preview();
+                assert!(!preview.is_empty(), "PDF should have some content or fallback message");
+                
+                // Verify it's recognized as a PDF
+                assert!(matches!(analyzed_file.detected_type, 
+                    fs_organiser::file_analyzer::DetectedFileType::Pdf));
+                    
+                println!("✓ PDF content preview: {}", 
+                    if preview.len() > 100 { 
+                        format!("{}...", &preview[..100])
+                    } else { 
+                        preview.to_string()
+                    });
+            }
+            Err(e) => {
+                panic!("PDF processing should not return an error: {}", e);
+            }
+        }
+    } else {
+        println!("Skipping PDF panic test - no PDF file found in test_dir");
+    }
+
+    Ok(())
+}

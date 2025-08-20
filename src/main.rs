@@ -1,6 +1,10 @@
 mod ai_structs;
+mod batch_processor;
+mod concurrent_processor;
 mod config;
+mod database;
 mod file_analyzer;
+mod models;
 mod organizer;
 mod providers;
 mod utils;
@@ -14,7 +18,7 @@ use crate::{
     config::Config,
     organizer::FileOrganizer,
     providers::LLMProvider,
-    utils::{walk_directory, print_tree},
+    utils::print_tree,
 };
 
 #[tokio::main]
@@ -44,6 +48,14 @@ async fn main() -> Result<()> {
                         .long("show-tree")
                         .help("Show current directory tree")
                         .action(clap::ArgAction::SetTrue)
+                )
+                .arg(
+                    Arg::new("depth")
+                        .long("depth")
+                        .short('d')
+                        .help("Maximum depth to scan (1 = top-level only, default: 1)")
+                        .value_parser(clap::value_parser!(usize))
+                        .default_value("1")
                 )
         )
         .subcommand(
@@ -79,12 +91,21 @@ async fn main() -> Result<()> {
                 .help("Show current directory tree")
                 .action(clap::ArgAction::SetTrue)
         )
+        .arg(
+            Arg::new("depth")
+                .long("depth")
+                .short('d')
+                .help("Maximum depth to scan (1 = top-level only, default: 1)")
+                .value_parser(clap::value_parser!(usize))
+                .default_value("1")
+        )
         .get_matches();
 
     match matches.subcommand() {
         Some(("organize", sub_matches)) => {
             let target_dir = PathBuf::from(sub_matches.get_one::<String>("directory").unwrap());
-            run_organize_command(target_dir, sub_matches).await?;
+            let depth = *sub_matches.get_one::<usize>("depth").unwrap();
+            run_organize_command(target_dir, sub_matches, depth).await?;
         }
         Some(("config", sub_matches)) => {
             run_config_command(sub_matches).await?;
@@ -93,7 +114,8 @@ async fn main() -> Result<()> {
             // Default mode - organize if directory is provided
             if let Some(directory) = matches.get_one::<String>("directory") {
                 let target_dir = PathBuf::from(directory);
-                run_organize_command(target_dir, &matches).await?;
+                let depth = *matches.get_one::<usize>("depth").unwrap();
+                run_organize_command(target_dir, &matches, depth).await?;
             } else {
                 println!("{}", "🤖 AI File Organizer".cyan().bold());
                 println!("Use 'fs-organiser --help' for usage information");
@@ -106,7 +128,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn run_organize_command(target_dir: PathBuf, matches: &clap::ArgMatches) -> Result<()> {
+async fn run_organize_command(target_dir: PathBuf, matches: &clap::ArgMatches, depth: usize) -> Result<()> {
     if !target_dir.exists() {
         eprintln!("{}: Directory does not exist: {}", 
             "Error".red().bold(), 
@@ -132,7 +154,7 @@ async fn run_organize_command(target_dir: PathBuf, matches: &clap::ArgMatches) -
         println!();
     }
 
-    match run_organizer(target_dir).await {
+    match run_organizer(target_dir, depth).await {
         Ok(_) => {
             println!("\n{}", "🎉 File organization completed successfully!".green().bold());
         }
@@ -245,27 +267,18 @@ async fn config_reset() -> Result<()> {
     Ok(())
 }
 
-async fn run_organizer(target_dir: PathBuf) -> Result<()> {
-    println!("{}", "Scanning directory...".green());
-    let files = walk_directory(&target_dir)?;
-    
-    if files.is_empty() {
-        println!("{}", "No analyzable files found in the directory.".yellow());
-        return Ok(());
-    }
-    
-    println!("Found {} analyzable files\n", files.len().to_string().green());
-    
-    println!("{}", "Setting up AI provider...".green());
+async fn run_organizer(target_dir: PathBuf, depth: usize) -> Result<()> {
+    println!("{}", "🤖 Setting up AI provider...".cyan().bold());
     let provider = LLMProvider::new().await?;
     
-    println!("\nUsing: {} with model {}", 
+    println!("{} Using {} with model {}", 
+        "✓".green().bold(),
         format!("{:?}", provider.get_provider()).cyan(),
         provider.get_model_name().yellow()
     );
     
-    let organizer = FileOrganizer::new(provider, files, target_dir);
-    organizer.analyze_and_organize().await?;
+    let organizer = FileOrganizer::new(provider, target_dir.clone())?;
+    organizer.analyze_and_organize(depth).await?;
     
     Ok(())
 }

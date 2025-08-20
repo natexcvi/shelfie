@@ -1,14 +1,14 @@
 use anyhow::{Context, Result};
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use pdf_extract::extract_text;
 use std::fs;
+use std::panic;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub enum FileContent {
-    Text(String),
-    Image(String), // Base64 encoded
-    Pdf(String),
+    Text(String),    // Preview only (max 500 chars)
+    Image(String),   // Description of image file
+    Pdf(String),     // Preview only (max 500 chars)
     Audio(String),   // Audio file metadata
     Video(String),   // Video file metadata
     Archive(String), // Archive file metadata
@@ -126,17 +126,20 @@ impl AnalyzedFile {
         match detected_type {
             DetectedFileType::Text => {
                 let content = fs::read_to_string(path).context("Failed to read text file")?;
-                Ok(FileContent::Text(content))
+                let preview = Self::create_text_preview(&content);
+                Ok(FileContent::Text(preview))
             }
             DetectedFileType::Pdf => {
-                let text = extract_text(path)
+                let path_clone = path.to_path_buf();
+                let text = panic::catch_unwind(move || extract_text(&path_clone))
+                    .map_err(|_| "PDF extraction panicked")
+                    .and_then(|result| result.map_err(|_| "PDF extraction failed"))
                     .unwrap_or_else(|_| String::from("Could not extract PDF text"));
-                Ok(FileContent::Pdf(text))
+                let preview = Self::create_text_preview(&text);
+                Ok(FileContent::Pdf(preview))
             }
-            DetectedFileType::Image(_mime_type) => {
-                let img_data = fs::read(path).context("Failed to read image file")?;
-                let base64 = STANDARD.encode(&img_data);
-                Ok(FileContent::Image(base64))
+            DetectedFileType::Image(mime_type) => {
+                Ok(FileContent::Image(format!("Image file: {}", mime_type)))
             }
             DetectedFileType::Audio(mime_type) => {
                 Ok(FileContent::Audio(format!("Audio file: {}", mime_type)))
@@ -151,29 +154,24 @@ impl AnalyzedFile {
         }
     }
 
-    pub fn get_content_preview(&self) -> String {
+    fn create_text_preview(text: &str) -> String {
+        const MAX_PREVIEW_CHARS: usize = 500;
+        if text.len() <= MAX_PREVIEW_CHARS {
+            text.to_string()
+        } else {
+            format!("{}...", text.chars().take(MAX_PREVIEW_CHARS).collect::<String>())
+        }
+    }
+
+    pub fn get_content_preview(&self) -> &str {
         match &self.content {
-            FileContent::Text(text) => {
-                let preview = text.chars().take(500).collect::<String>();
-                if text.len() > 500 {
-                    format!("{}...", preview)
-                } else {
-                    preview
-                }
-            }
-            FileContent::Pdf(text) => {
-                let preview = text.chars().take(500).collect::<String>();
-                if text.len() > 500 {
-                    format!("{}...", preview)
-                } else {
-                    preview
-                }
-            }
-            FileContent::Image(_) => format!("[Image file: {}]", self.get_type_description()),
-            FileContent::Audio(desc) => format!("[{}]", desc),
-            FileContent::Video(desc) => format!("[{}]", desc),
-            FileContent::Archive(desc) => format!("[{}]", desc),
-            FileContent::Binary => "[Binary file]".to_string(),
+            FileContent::Text(preview) => preview,
+            FileContent::Pdf(preview) => preview,
+            FileContent::Image(desc) => desc,
+            FileContent::Audio(desc) => desc,
+            FileContent::Video(desc) => desc,
+            FileContent::Archive(desc) => desc,
+            FileContent::Binary => "[Binary file]",
         }
     }
 

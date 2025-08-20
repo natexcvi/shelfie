@@ -55,6 +55,7 @@ struct OllamaModelsResponse {
     models: Vec<OllamaModel>,
 }
 
+#[derive(Clone)]
 pub struct LLMProvider {
     provider: Provider,
     model_name: String,
