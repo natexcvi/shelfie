@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use colored::*;
-use dialoguer::Confirm;
+use dialoguer::{theme::ColorfulTheme, Confirm};
 
 use indicatif::{ProgressBar, ProgressStyle};
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -76,8 +76,10 @@ impl FileOrganizer {
             plan
         } else {
             // First ask if they want to proceed with the current plan
-            let initial_confirm = Confirm::new()
-                .with_prompt("Do you want to proceed with this organization?")
+            let initial_confirm = Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt(
+                    "Do you want to proceed with this organization (if not, I can modify it)?",
+                )
                 .interact()?;
 
             if initial_confirm {

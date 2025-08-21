@@ -350,6 +350,118 @@ impl Tool for ListCabinetsTool {
     }
 }
 
+pub struct DeleteShelfTool {
+    database: Arc<Database>,
+}
+
+impl Tool for DeleteShelfTool {
+    const NAME: &'static str = "delete_shelf";
+    type Error = PlanToolError;
+    type Args = DeleteShelfArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "delete_shelf".to_string(),
+            description: "Delete a shelf from a cabinet (only if it contains no items)".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "cabinet_name": {
+                        "type": "string",
+                        "description": "The name of the cabinet containing the shelf"
+                    },
+                    "shelf_name": {
+                        "type": "string",
+                        "description": "The name of the shelf to delete"
+                    }
+                },
+                "required": ["cabinet_name", "shelf_name"]
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let cabinet = self
+            .database
+            .get_cabinet_by_name(&args.cabinet_name)?
+            .ok_or_else(|| PlanToolError::CabinetNotFound(args.cabinet_name.clone()))?;
+
+        let shelf = self
+            .database
+            .get_shelf_by_name(cabinet.id, &args.shelf_name)?
+            .ok_or_else(|| PlanToolError::ShelfNotFound(args.shelf_name.clone()))?;
+
+        // Check if shelf contains any items
+        let items = self.database.list_all_items()?;
+        let items_in_shelf: Vec<_> = items.iter().filter(|i| i.shelf_id == shelf.id).collect();
+
+        if !items_in_shelf.is_empty() {
+            return Err(PlanToolError::InvalidInput(format!(
+                "Cannot delete shelf '{}' because it contains {} items. Move items to another shelf first.",
+                args.shelf_name,
+                items_in_shelf.len()
+            )));
+        }
+
+        self.database.delete_shelf(shelf.id)?;
+
+        Ok(format!(
+            "Successfully deleted shelf '{}' from cabinet '{}'",
+            args.shelf_name, args.cabinet_name
+        ))
+    }
+}
+
+pub struct DeleteCabinetTool {
+    database: Arc<Database>,
+}
+
+impl Tool for DeleteCabinetTool {
+    const NAME: &'static str = "delete_cabinet";
+    type Error = PlanToolError;
+    type Args = DeleteCabinetArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "delete_cabinet".to_string(),
+            description: "Delete a cabinet (only if it contains no shelves or items)".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "The name of the cabinet to delete"
+                    }
+                },
+                "required": ["name"]
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let cabinet = self
+            .database
+            .get_cabinet_by_name(&args.name)?
+            .ok_or_else(|| PlanToolError::CabinetNotFound(args.name.clone()))?;
+
+        // Check if cabinet contains any shelves
+        let shelves = self.database.list_shelves(Some(cabinet.id))?;
+        if !shelves.is_empty() {
+            return Err(PlanToolError::InvalidInput(format!(
+                "Cannot delete cabinet '{}' because it contains {} shelves. Delete all shelves first.",
+                args.name,
+                shelves.len()
+            )));
+        }
+
+        self.database.delete_cabinet(cabinet.id)?;
+
+        Ok(format!("Successfully deleted cabinet '{}'", args.name))
+    }
+}
+
 impl PlanRefiner {
     pub fn new(provider: LLMProvider, database: Arc<Database>, base_path: PathBuf) -> Self {
         Self {
@@ -423,6 +535,12 @@ impl PlanRefiner {
         let list_cabinets_tool = ListCabinetsTool {
             database: Arc::clone(&self.database),
         };
+        let delete_shelf_tool = DeleteShelfTool {
+            database: Arc::clone(&self.database),
+        };
+        let delete_cabinet_tool = DeleteCabinetTool {
+            database: Arc::clone(&self.database),
+        };
 
         let initial_prompt = format!(
             r#"You are a file organization assistant helping to refine a file organization plan based on user feedback.
@@ -436,6 +554,8 @@ You have access to tools that let you:
 3. Move items between cabinets/shelves (move_item)
 4. Create new cabinets (create_cabinet)
 5. Create new shelves within cabinets (create_shelf)
+6. Delete empty shelves (delete_shelf)
+7. Delete empty cabinets (delete_cabinet)
 
 Your task:
 1. First, understand the current organization by listing cabinets and items
@@ -459,6 +579,8 @@ Please start by examining the current organization structure."#,
                     .tool(move_item_tool)
                     .tool(create_cabinet_tool)
                     .tool(create_shelf_tool)
+                    .tool(delete_shelf_tool)
+                    .tool(delete_cabinet_tool)
                     .build();
 
                 let response = agent.prompt("Please examine the current organization and implement the requested changes.").multi_turn(20).await?;
@@ -476,6 +598,8 @@ Please start by examining the current organization structure."#,
                     .tool(move_item_tool)
                     .tool(create_cabinet_tool)
                     .tool(create_shelf_tool)
+                    .tool(delete_shelf_tool)
+                    .tool(delete_cabinet_tool)
                     .build();
 
                 let response = agent.prompt("Please examine the current organization and implement the requested changes.").multi_turn(20).await?;
@@ -493,6 +617,8 @@ Please start by examining the current organization structure."#,
                     .tool(move_item_tool)
                     .tool(create_cabinet_tool)
                     .tool(create_shelf_tool)
+                    .tool(delete_shelf_tool)
+                    .tool(delete_cabinet_tool)
                     .build();
 
                 let response = agent.prompt("Please examine the current organization and implement the requested changes.").multi_turn(20).await?;
