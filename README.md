@@ -6,7 +6,7 @@ Transform messy directories into perfectly organized file systems with AI.
 
 - **Smart Analysis**: AI examines file content to create meaningful names and folders
 - **Multiple Providers**: OpenAI, Anthropic, or Ollama support
-- **Safe Operations**: Shows plan before moving anything
+- **Safe Operations**: Shows plan before moving anything, with interactive refinement mode
 - **All File Types**: Images, PDFs, audio, video, code, archives, and more
 
 *Inspired by the [Johnny Decimal](https://johnnydecimal.com) organizational system for creating logical, hierarchical folder structures.*
