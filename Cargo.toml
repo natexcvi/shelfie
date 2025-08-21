@@ -24,17 +24,20 @@ dialoguer = "0.11"
 colored = "3"
 reqwest = { version = "0.12", features = ["json"] }
 image = "0.25"
-rig-core = "0.18.0"
+rig-core = "0.18.2"
 indicatif = "0.18"
 futures = "0.3"
 tokio-stream = "0.1"
 infer = "0.19"
 dirs = "5.0"
 rusqlite = { version = "0.32", features = ["bundled"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
 crossbeam = "0.8"
 rayon = "1.10"
 chrono = "0.4"
 extractous = "0.3.0"
+thiserror = "1.0"
 
 [dev-dependencies]
 tempfile = "3.0"

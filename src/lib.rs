@@ -4,5 +4,6 @@ pub mod database;
 pub mod file_analyzer;
 pub mod models;
 pub mod organizer;
+pub mod plan_refiner;
 pub mod providers;
 pub mod utils;

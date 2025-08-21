@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -62,15 +64,16 @@ pub struct Item {
 }
 
 pub struct Database {
-    conn: Connection,
+    pool: Pool<SqliteConnectionManager>,
 }
 
 impl Database {
     pub fn open_or_create(base_path: &Path) -> Result<Self> {
         let db_path = base_path.join(DB_NAME);
-        let conn = Connection::open(&db_path).context("Failed to open SQLite database")?;
+        let manager = SqliteConnectionManager::file(&db_path);
+        let pool = Pool::new(manager).context("Failed to create connection pool")?;
 
-        let mut db = Self { conn };
+        let db = Self { pool };
         db.initialize_schema()?;
         Ok(db)
     }
@@ -79,8 +82,13 @@ impl Database {
         base_path.join(DB_NAME).exists()
     }
 
-    fn initialize_schema(&mut self) -> Result<()> {
-        self.conn.execute_batch(
+    fn get_conn(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>> {
+        self.pool.get().context("Failed to get connection from pool")
+    }
+
+    fn initialize_schema(&self) -> Result<()> {
+        let conn = self.get_conn()?;
+        conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS cabinets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,25 +133,23 @@ impl Database {
         Ok(())
     }
 
-    pub fn begin_transaction(&mut self) -> Result<Transaction> {
-        self.conn
-            .transaction()
-            .context("Failed to begin transaction")
-    }
+    // Note: For simplicity, we'll make transaction operations work with individual connections
+    // In a real application, you might want a more sophisticated transaction management system
 
     // Cabinet operations
     pub fn create_cabinet(&self, name: &str, description: &str) -> Result<i64> {
+        let conn = self.get_conn()?;
         let created_at = Utc::now().to_rfc3339();
-        self.conn.execute(
+        conn.execute(
             "INSERT INTO cabinets (name, description, created_at) VALUES (?1, ?2, ?3)",
             params![name, description, created_at],
         )?;
-        Ok(self.conn.last_insert_rowid())
+        Ok(conn.last_insert_rowid())
     }
 
     pub fn get_cabinet_by_name(&self, name: &str) -> Result<Option<Cabinet>> {
-        let mut stmt = self
-            .conn
+        let conn = self.get_conn()?;
+        let mut stmt = conn
             .prepare("SELECT id, name, description, created_at FROM cabinets WHERE name = ?1")?;
 
         stmt.query_row(params![name], |row| {
@@ -161,8 +167,8 @@ impl Database {
     }
 
     pub fn list_cabinets(&self) -> Result<Vec<Cabinet>> {
-        let mut stmt = self
-            .conn
+        let conn = self.get_conn()?;
+        let mut stmt = conn
             .prepare("SELECT id, name, description, created_at FROM cabinets ORDER BY name")?;
 
         let cabinets = stmt
@@ -183,16 +189,18 @@ impl Database {
 
     // Shelf operations
     pub fn create_shelf(&self, cabinet_id: i64, name: &str, description: &str) -> Result<i64> {
+        let conn = self.get_conn()?;
         let created_at = Utc::now().to_rfc3339();
-        self.conn.execute(
+        conn.execute(
             "INSERT INTO shelves (cabinet_id, name, description, created_at) VALUES (?1, ?2, ?3, ?4)",
             params![cabinet_id, name, description, created_at],
         )?;
-        Ok(self.conn.last_insert_rowid())
+        Ok(conn.last_insert_rowid())
     }
 
     pub fn get_shelf_by_name(&self, cabinet_id: i64, name: &str) -> Result<Option<Shelf>> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.get_conn()?;
+        let mut stmt = conn.prepare(
             "SELECT id, cabinet_id, name, description, created_at FROM shelves
              WHERE cabinet_id = ?1 AND name = ?2",
         )?;
@@ -223,7 +231,8 @@ impl Database {
             "SELECT id, cabinet_id, name, description, created_at FROM shelves ORDER BY cabinet_id, name".to_string()
         };
 
-        let mut stmt = self.conn.prepare(&query)?;
+        let conn = self.get_conn()?;
+        let mut stmt = conn.prepare(&query)?;
 
         let shelves = stmt
             .query_map([], |row| {
@@ -244,8 +253,9 @@ impl Database {
 
     // Item operations
     pub fn insert_item(&self, item: &Item) -> Result<i64> {
+        let conn = self.get_conn()?;
         let processed_at = item.processed_at.to_rfc3339();
-        self.conn.execute(
+        conn.execute(
             "INSERT INTO items (shelf_id, path, original_name, suggested_name, description,
                               file_type, is_opaque_dir, processed_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -260,7 +270,7 @@ impl Database {
                 processed_at
             ],
         )?;
-        Ok(self.conn.last_insert_rowid())
+        Ok(conn.last_insert_rowid())
     }
 
     pub fn update_item_content(
@@ -269,7 +279,7 @@ impl Database {
         description: &str,
         suggested_name: &str,
     ) -> Result<()> {
-        self.conn.execute(
+        self.get_conn()?.execute(
             "UPDATE items SET description = ?1, suggested_name = ?2, needs_content_read = 0
              WHERE id = ?3",
             params![description, suggested_name, item_id],
@@ -278,7 +288,8 @@ impl Database {
     }
 
     pub fn get_item_by_path(&self, path: &str) -> Result<Option<Item>> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.get_conn()?;
+        let mut stmt = conn.prepare(
             "SELECT id, shelf_id, path, original_name, suggested_name, description,
                     file_type, is_opaque_dir, processed_at
              FROM items WHERE path = ?1",
@@ -304,7 +315,8 @@ impl Database {
     }
 
     pub fn list_items_needing_content(&self) -> Result<Vec<Item>> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.get_conn()?;
+        let mut stmt = conn.prepare(
             "SELECT id, shelf_id, path, original_name, suggested_name, description,
                     file_type, is_opaque_dir, processed_at
              FROM items WHERE needs_content_read = 1",
@@ -332,7 +344,8 @@ impl Database {
     }
 
     pub fn list_all_items(&self) -> Result<Vec<Item>> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.get_conn()?;
+        let mut stmt = conn.prepare(
             "SELECT id, shelf_id, path, original_name, suggested_name, description,
                     file_type, is_opaque_dir, processed_at
              FROM items ORDER BY shelf_id, original_name",
@@ -361,7 +374,7 @@ impl Database {
 
     // Processing state operations
     pub fn set_processing_state(&self, key: &str, value: &str) -> Result<()> {
-        self.conn.execute(
+        self.get_conn()?.execute(
             "INSERT OR REPLACE INTO processing_state (key, value) VALUES (?1, ?2)",
             params![key, value],
         )?;
@@ -369,8 +382,8 @@ impl Database {
     }
 
     pub fn get_processing_state(&self, key: &str) -> Result<Option<String>> {
-        let mut stmt = self
-            .conn
+        let conn = self.get_conn()?;
+        let mut stmt = conn
             .prepare("SELECT value FROM processing_state WHERE key = ?1")?;
 
         stmt.query_row(params![key], |row| row.get(0))
@@ -380,10 +393,74 @@ impl Database {
 
     // Helper to get all processed paths for incremental processing
     pub fn get_processed_paths(&self) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare("SELECT path FROM items")?;
+        let conn = self.get_conn()?;
+        let mut stmt = conn.prepare("SELECT path FROM items")?;
         let paths = stmt
             .query_map([], |row| row.get(0))?
             .collect::<Result<Vec<String>, _>>()?;
         Ok(paths)
+    }
+
+    // Update methods for plan refinement
+    pub fn update_item_shelf(&self, item_id: i64, new_shelf_id: i64) -> Result<()> {
+        self.get_conn()?.execute(
+            "UPDATE items SET shelf_id = ?1 WHERE id = ?2",
+            params![new_shelf_id, item_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_cabinet(&self, cabinet_id: i64, name: &str, description: &str) -> Result<()> {
+        self.get_conn()?.execute(
+            "UPDATE cabinets SET name = ?1, description = ?2 WHERE id = ?3",
+            params![name, description, cabinet_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_shelf(&self, shelf_id: i64, name: &str, description: &str) -> Result<()> {
+        self.get_conn()?.execute(
+            "UPDATE shelves SET name = ?1, description = ?2 WHERE id = ?3",
+            params![name, description, shelf_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_cabinet(&self, cabinet_id: i64) -> Result<()> {
+        // First check if cabinet is empty
+        let shelf_count: i64 = self.get_conn()?.query_row(
+            "SELECT COUNT(*) FROM shelves WHERE cabinet_id = ?1",
+            params![cabinet_id],
+            |row| row.get(0),
+        )?;
+
+        if shelf_count > 0 {
+            return Err(anyhow::anyhow!("Cannot delete cabinet: contains shelves"));
+        }
+
+        self.get_conn()?.execute(
+            "DELETE FROM cabinets WHERE id = ?1",
+            params![cabinet_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_shelf(&self, shelf_id: i64) -> Result<()> {
+        // First check if shelf is empty
+        let item_count: i64 = self.get_conn()?.query_row(
+            "SELECT COUNT(*) FROM items WHERE shelf_id = ?1",
+            params![shelf_id],
+            |row| row.get(0),
+        )?;
+
+        if item_count > 0 {
+            return Err(anyhow::anyhow!("Cannot delete shelf: contains items"));
+        }
+
+        self.get_conn()?.execute(
+            "DELETE FROM shelves WHERE id = ?1",
+            params![shelf_id],
+        )?;
+        Ok(())
     }
 }

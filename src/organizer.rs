@@ -16,6 +16,7 @@ use crate::{
         CabinetPlan, EnrichedDirectory, EnrichedFile, FileMovement, OrganizationPlan,
         ProcessingItem, SampledItem, ShelfPlan,
     },
+    plan_refiner::PlanRefiner,
     providers::LLMProvider,
 };
 
@@ -70,22 +71,42 @@ impl FileOrganizer {
         println!("\n{}", "Proposed Organization Plan:".cyan().bold());
         self.print_plan(&plan)?;
 
-        let confirm = if auto_confirm {
+        let final_plan = if auto_confirm {
             println!("{}", "Auto-confirming organization plan...".yellow());
-            true
+            plan
         } else {
-            Confirm::new()
+            // First ask if they want to proceed with the current plan
+            let initial_confirm = Confirm::new()
                 .with_prompt("Do you want to proceed with this organization?")
-                .interact()?
+                .interact()?;
+
+            if initial_confirm {
+                plan
+            } else {
+                // Enter refinement mode
+                println!("\n{}", "Entering plan refinement mode...".cyan().bold());
+                let refiner = PlanRefiner::new(
+                    self.provider.clone(),
+                    Arc::clone(&self.database),
+                    self.base_path.clone(),
+                );
+
+                match refiner.refine_plan_with_feedback(&plan).await? {
+                    Some(refined_plan) => {
+                        println!("\n{}", "Plan refinement completed!".green().bold());
+                        refined_plan
+                    }
+                    None => {
+                        println!("{}", "Organization cancelled.".yellow());
+                        return Ok(());
+                    }
+                }
+            }
         };
 
-        if confirm {
-            println!("\n{}", "Step 4: Executing reorganization...".green().bold());
-            self.execute_plan(&plan).await?;
-            println!("{}", "✓ Organization complete!".green().bold());
-        } else {
-            println!("{}", "Organization cancelled.".yellow());
-        }
+        println!("\n{}", "Step 4: Executing reorganization...".green().bold());
+        self.execute_plan(&final_plan).await?;
+        println!("{}", "✓ Organization complete!".green().bold());
 
         Ok(())
     }

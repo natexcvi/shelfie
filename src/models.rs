@@ -149,6 +149,7 @@ pub struct OrganizationPlan {
     pub movements: Vec<FileMovement>,
 }
 
+
 #[derive(Debug, Clone)]
 pub struct CabinetPlan {
     pub name: String,

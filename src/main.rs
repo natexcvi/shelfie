@@ -4,6 +4,7 @@ mod database;
 mod file_analyzer;
 mod models;
 mod organizer;
+mod plan_refiner;
 mod providers;
 mod utils;
 
