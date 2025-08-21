@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "fs-organiser"
+name = "shelfie"
 path = "src/main.rs"
 
 [lib]
@@ -38,3 +38,5 @@ extractous = "0.3.0"
 
 [dev-dependencies]
 tempfile = "3.0"
+httpmock = "0.7"
+tokio-test = "0.4"

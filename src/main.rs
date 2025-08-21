@@ -16,10 +16,10 @@ use crate::{config::Config, organizer::FileOrganizer, providers::LLMProvider, ut
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let matches = Command::new("fs-organiser")
+    let matches = Command::new("shelfie")
         .version("0.1.0")
-        .author("AI File Organizer")
-        .about("Organize your files using AI - analyzes content and creates logical directory structures")
+        .author("Shelfie")
+        .about("Transform messy directories into perfectly organized file systems with AI")
         .subcommand_required(false)
         .subcommand(
             Command::new("organize")
@@ -49,6 +49,13 @@ async fn main() -> Result<()> {
                         .help("Maximum depth to scan (1 = top-level only, default: 1)")
                         .value_parser(clap::value_parser!(usize))
                         .default_value("1")
+                )
+                .arg(
+                    Arg::new("auto-confirm")
+                        .long("auto-confirm")
+                        .short('y')
+                        .help("Automatically confirm the organization plan without prompting")
+                        .action(clap::ArgAction::SetTrue)
                 )
         )
         .subcommand(
@@ -92,13 +99,21 @@ async fn main() -> Result<()> {
                 .value_parser(clap::value_parser!(usize))
                 .default_value("1")
         )
+        .arg(
+            Arg::new("auto-confirm")
+                .long("auto-confirm")
+                .short('y')
+                .help("Automatically confirm the organization plan without prompting")
+                .action(clap::ArgAction::SetTrue)
+        )
         .get_matches();
 
     match matches.subcommand() {
         Some(("organize", sub_matches)) => {
             let target_dir = PathBuf::from(sub_matches.get_one::<String>("directory").unwrap());
             let depth = *sub_matches.get_one::<usize>("depth").unwrap();
-            run_organize_command(target_dir, sub_matches, depth).await?;
+            let auto_confirm = sub_matches.get_flag("auto-confirm");
+            run_organize_command(target_dir, sub_matches, depth, auto_confirm).await?;
         }
         Some(("config", sub_matches)) => {
             run_config_command(sub_matches).await?;
@@ -108,11 +123,12 @@ async fn main() -> Result<()> {
             if let Some(directory) = matches.get_one::<String>("directory") {
                 let target_dir = PathBuf::from(directory);
                 let depth = *matches.get_one::<usize>("depth").unwrap();
-                run_organize_command(target_dir, &matches, depth).await?;
+                let auto_confirm = matches.get_flag("auto-confirm");
+                run_organize_command(target_dir, &matches, depth, auto_confirm).await?;
             } else {
-                println!("{}", "🤖 AI File Organizer".cyan().bold());
-                println!("Use 'fs-organiser --help' for usage information");
-                println!("Quick start: fs-organiser <directory>");
+                println!("{}", "📚 Shelfie - AI File Organizer".cyan().bold());
+                println!("Use 'shelfie --help' for usage information");
+                println!("Quick start: shelfie <directory>");
             }
         }
         _ => unreachable!(),
@@ -125,6 +141,7 @@ async fn run_organize_command(
     target_dir: PathBuf,
     matches: &clap::ArgMatches,
     depth: usize,
+    auto_confirm: bool,
 ) -> Result<()> {
     if !target_dir.exists() {
         eprintln!(
@@ -144,7 +161,7 @@ async fn run_organize_command(
         std::process::exit(1);
     }
 
-    println!("{}", "🤖 AI File Organizer".cyan().bold());
+    println!("{}", "📚 Shelfie - AI File Organizer".cyan().bold());
     println!(
         "Target directory: {}\n",
         target_dir.display().to_string().yellow()
@@ -156,7 +173,7 @@ async fn run_organize_command(
         println!();
     }
 
-    match run_organizer(target_dir, depth).await {
+    match run_organizer(target_dir, depth, auto_confirm).await {
         Ok(_) => {
             println!(
                 "\n{}",
@@ -207,7 +224,7 @@ async fn run_config_command(matches: &clap::ArgMatches) -> Result<()> {
             println!("  edit  - Edit configuration interactively");
             println!("  show  - Show current configuration");
             println!("  reset - Reset configuration");
-            println!("\nUse 'fs-organiser config --help' for more information");
+            println!("\nUse 'shelfie config --help' for more information");
         }
         _ => unreachable!(),
     }
@@ -252,7 +269,7 @@ async fn config_show() -> Result<()> {
         None => {
             println!(
                 "{}",
-                "No configuration found. Run 'fs-organiser config edit' to create one.".yellow()
+                "No configuration found. Run 'shelfie config edit' to create one.".yellow()
             );
         }
     }
@@ -288,8 +305,8 @@ async fn config_reset() -> Result<()> {
     Ok(())
 }
 
-async fn run_organizer(target_dir: PathBuf, depth: usize) -> Result<()> {
-    println!("{}", "🤖 Setting up AI provider...".cyan().bold());
+async fn run_organizer(target_dir: PathBuf, depth: usize, auto_confirm: bool) -> Result<()> {
+    println!("{}", "📚 Setting up AI provider...".cyan().bold());
     let provider = LLMProvider::new().await?;
 
     println!(
@@ -300,7 +317,7 @@ async fn run_organizer(target_dir: PathBuf, depth: usize) -> Result<()> {
     );
 
     let organizer = FileOrganizer::new(provider, target_dir.clone())?;
-    organizer.analyze_and_organize(depth).await?;
+    organizer.analyze_and_organize(depth, auto_confirm).await?;
 
     Ok(())
 }

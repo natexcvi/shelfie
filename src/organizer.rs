@@ -35,7 +35,7 @@ impl FileOrganizer {
         })
     }
 
-    pub async fn analyze_and_organize(&self, max_depth: usize) -> Result<()> {
+    pub async fn analyze_and_organize(&self, max_depth: usize, auto_confirm: bool) -> Result<()> {
         // Check if database exists for resuming
         if Database::exists(&self.base_path) {
             println!(
@@ -70,9 +70,14 @@ impl FileOrganizer {
         println!("\n{}", "Proposed Organization Plan:".cyan().bold());
         self.print_plan(&plan)?;
 
-        let confirm = Confirm::new()
-            .with_prompt("Do you want to proceed with this organization?")
-            .interact()?;
+        let confirm = if auto_confirm {
+            println!("{}", "Auto-confirming organization plan...".yellow());
+            true
+        } else {
+            Confirm::new()
+                .with_prompt("Do you want to proceed with this organization?")
+                .interact()?
+        };
 
         if confirm {
             println!("\n{}", "Step 4: Executing reorganization...".green().bold());
