@@ -73,36 +73,51 @@ pub struct ShelfInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct BatchAnalysisResponse {
+    #[schemars(description = "Analysis results for each item in the batch, in the same order as the input items")]
     pub items: Vec<ItemAnalysis>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct ItemAnalysis {
+    #[schemars(description = "Must match the id from the corresponding input item")]
     pub id: String,
+    #[schemars(description = "Brief one-sentence description of what this item contains or represents")]
     pub description: String,
-    pub suggested_name: String, // Use empty string if no suggestion
+    #[schemars(description = "Better name for the item if current name needs improvement, or empty string if current name is fine")]
+    pub suggested_name: String,
+    #[schemars(description = "For directories only: true if directory contains homogeneous/generated content that should be treated as a single unit")]
     pub is_opaque_directory: bool,
+    #[schemars(description = "Cabinet (top-level container) assignment for this item")]
     pub cabinet: CabinetAssignment,
+    #[schemars(description = "Shelf (sub-container within cabinet) assignment for this item")]
     pub shelf: ShelfAssignment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct CabinetAssignment {
-    pub assignment_type: String, // "existing" or "new"
-    pub existing_id: i64,        // Use 0 for new assignments
-    pub new_name: String,        // Use empty string for existing assignments
-    pub new_description: String, // Use empty string for existing assignments
+    #[schemars(description = "Must be exactly 'existing' to use an existing cabinet or 'new' to create a new one")]
+    pub assignment_type: String,
+    #[schemars(description = "When assignment_type is 'existing': must be the ID of an existing cabinet from the input. When assignment_type is 'new': must be 0")]
+    pub existing_id: i64,
+    #[schemars(description = "When assignment_type is 'new': short descriptive name for the new cabinet. When assignment_type is 'existing': must be empty string")]
+    pub new_name: String,
+    #[schemars(description = "When assignment_type is 'new': detailed description of what the new cabinet will contain. When assignment_type is 'existing': must be empty string")]
+    pub new_description: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct ShelfAssignment {
-    pub assignment_type: String, // "existing" or "new"
-    pub existing_id: i64,        // Use 0 for new assignments
-    pub new_name: String,        // Use empty string for existing assignments
-    pub new_description: String, // Use empty string for existing assignments
+    #[schemars(description = "Must be exactly 'existing' to use an existing shelf or 'new' to create a new one")]
+    pub assignment_type: String,
+    #[schemars(description = "When assignment_type is 'existing': must be the ID of an existing shelf from the input. When assignment_type is 'new': must be 0")]
+    pub existing_id: i64,
+    #[schemars(description = "When assignment_type is 'new': short descriptive name for the new shelf within its cabinet. When assignment_type is 'existing': must be empty string")]
+    pub new_name: String,
+    #[schemars(description = "When assignment_type is 'new': detailed description of what the new shelf will contain. When assignment_type is 'existing': must be empty string")]
+    pub new_description: String,
 }
 
 // Organization preview structures
