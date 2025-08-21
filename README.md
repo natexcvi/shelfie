@@ -9,6 +9,8 @@ Transform messy directories into perfectly organized file systems with AI.
 - **Safe Operations**: Shows plan before moving anything
 - **All File Types**: Images, PDFs, audio, video, code, archives, and more
 
+*Inspired by the [Johnny Decimal](https://johnnydecimal.com) organizational system for creating logical, hierarchical folder structures.*
+
 > ⚠️ **Privacy Warning**: When using external LLM providers (OpenAI, Anthropic), previews of the contents of all files in the target directory will be sent to the LLM service for analysis. Only use with files you're comfortable sharing. For sensitive data, consider using Ollama with a local model instead.
 
 ## Installation
