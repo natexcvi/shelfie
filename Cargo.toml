@@ -19,7 +19,6 @@ serde_json = "1"
 schemars = "1.0"
 walkdir = "2"
 base64 = "0.22"
-pdf-extract = "0.9"
 anyhow = "1"
 dialoguer = "0.11"
 colored = "3"
@@ -35,6 +34,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 crossbeam = "0.8"
 rayon = "1.10"
 chrono = "0.4"
+extractous = "0.3.0"
 
 [dev-dependencies]
 tempfile = "3.0"

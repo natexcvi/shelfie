@@ -1,4 +1,3 @@
-mod ai_structs;
 mod batch_processor;
 mod config;
 mod database;

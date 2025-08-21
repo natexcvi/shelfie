@@ -65,11 +65,14 @@ impl LLMProvider {
     pub async fn new() -> Result<Self> {
         // Try to load existing config first
         if let Some(config) = Config::load()? {
-            println!("Using saved configuration: {} with model {}", 
-                format!("{:?}", config.provider), 
+            println!(
+                "Using saved configuration: {} with model {}",
+                format!("{:?}", config.provider),
                 config.model_name
             );
-            
+
+            Self::validate_ai_provider_config(&config.provider).await?;
+
             return Ok(Self {
                 provider: config.provider,
                 model_name: config.model_name,
@@ -98,6 +101,30 @@ impl LLMProvider {
             provider,
             model_name,
         })
+    }
+
+    async fn validate_ai_provider_config(provider: &Provider) -> Result<()> {
+        match provider {
+            Provider::OpenAI => {
+                env::var("OPENAI_API_KEY").map_err(|err| {
+                    anyhow!("OPENAI_API_KEY environment variable is not set: {}", err)
+                })?;
+            }
+            Provider::Anthropic => {
+                env::var("ANTHROPIC_API_KEY").map_err(|err| {
+                    anyhow!("ANTHROPIC_API_KEY environment variable is not set: {}", err)
+                })?;
+            }
+            Provider::Ollama => {
+                env::var("OLLAMA_API_BASE_URL").map_err(|err| {
+                    anyhow!(
+                        "OLLAMA_API_BASE_URL environment variable is not set: {}",
+                        err
+                    )
+                })?;
+            }
+        }
+        Ok(())
     }
 
     pub async fn new_interactive() -> Result<Self> {

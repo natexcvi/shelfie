@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
@@ -47,10 +47,10 @@ pub struct ItemMetadata {
     pub id: String,
     pub name: String,
     pub item_type: String,
-    pub extension: String,            // Use empty string if no extension
-    pub size_bytes: u64,             // Use 0 for directories or unknown
+    pub extension: String,             // Use empty string if no extension
+    pub size_bytes: u64,               // Use 0 for directories or unknown
     pub sampled_contents: Vec<String>, // Use empty vec for files
-    pub content_preview: String,      // Use empty string if no preview
+    pub content_preview: String,       // Use empty string if no preview
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -82,7 +82,6 @@ pub struct ItemAnalysis {
     pub id: String,
     pub description: String,
     pub suggested_name: String, // Use empty string if no suggestion
-    pub needs_content_read: bool,
     pub is_opaque_directory: bool,
     pub cabinet: CabinetAssignment,
     pub shelf: ShelfAssignment,

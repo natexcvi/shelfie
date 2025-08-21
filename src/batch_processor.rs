@@ -293,7 +293,6 @@ impl BatchProcessor {
                 description: analysis.description.clone(),
                 file_type,
                 is_opaque_dir,
-                needs_content_read: analysis.needs_content_read,
                 processed_at: Utc::now(),
             };
 

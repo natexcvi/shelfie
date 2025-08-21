@@ -1,17 +1,17 @@
 use anyhow::{Context, Result};
 use colored::*;
 use dialoguer::Confirm;
-use futures::future::try_join_all;
+
 use indicatif::{ProgressBar, ProgressStyle};
 use std::{path::PathBuf, sync::Arc, time::Duration};
+use tokio::{sync::Semaphore, task::JoinSet};
 
-use tokio::sync::RwLock;
 use walkdir::WalkDir;
 
 use crate::{
     batch_processor::BatchProcessor,
-    database::Database,
-    file_analyzer::AnalyzedFile,
+    database::{Database, DB_NAME},
+    file_analyzer::{AnalyzedFile, FileContent},
     models::{
         CabinetPlan, EnrichedDirectory, EnrichedFile, FileMovement, OrganizationPlan,
         ProcessingItem, SampledItem, ShelfPlan,
@@ -87,7 +87,10 @@ impl FileOrganizer {
 
     async fn collect_items(&self, max_depth: usize) -> Result<Vec<ProcessingItem>> {
         let processed_paths = self.database.get_processed_paths().unwrap_or_default();
-        let mut handles = Vec::new();
+        let mut join_set = JoinSet::new();
+        const MAX_CONCURRENCY: usize = 10;
+
+        let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENCY));
 
         let progress_bar = ProgressBar::new_spinner();
         progress_bar.set_style(
@@ -115,7 +118,7 @@ impl FileOrganizer {
             // Skip hidden files and the database file
             if let Some(name) = path.file_name() {
                 let name_str = name.to_string_lossy();
-                if name_str.starts_with('.') || name_str == ".fs_organizer.db" {
+                if name_str.starts_with('.') || name_str == DB_NAME {
                     continue;
                 }
             }
@@ -125,26 +128,29 @@ impl FileOrganizer {
                 continue;
             }
 
+            let semaphore = Arc::clone(&semaphore);
             if path.is_file() {
-                handles.push(tokio::task::spawn(async move {
+                join_set.spawn(async move {
+                    let _permit = semaphore.acquire().await?;
                     Self::process_file_static(&path).await
-                }));
+                });
             } else if path.is_dir() {
-                handles.push(tokio::task::spawn(async move {
+                join_set.spawn(async move {
+                    let _permit = semaphore.acquire().await?;
                     Self::process_directory_static(&path).await
-                }));
+                });
             }
         }
 
         progress_bar.set_style(ProgressStyle::default_bar().template(
             "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
         )?);
-        progress_bar.set_length(handles.len() as u64);
+        progress_bar.set_length(join_set.len() as u64);
 
         let mut items = Vec::new();
 
-        for handle in handles {
-            items.push(handle.await??);
+        while let Some(result) = join_set.join_next().await {
+            items.push(result??);
             progress_bar.inc(1);
         }
 
@@ -153,7 +159,10 @@ impl FileOrganizer {
     }
 
     async fn process_file_static(path: &std::path::Path) -> Result<ProcessingItem> {
-        let analyzed = AnalyzedFile::new(path.to_path_buf()).context("Failed to analyze file")?;
+        // eprintln!("Processing file: {:?}", path);
+        let analyzed = AnalyzedFile::new(path.to_path_buf())
+            .await
+            .context("Failed to analyze file")?;
 
         let enriched = EnrichedFile {
             path: path.to_path_buf(),
@@ -161,13 +170,18 @@ impl FileOrganizer {
             extension: analyzed.extension.clone(),
             file_type: analyzed.get_type_description(),
             size: analyzed.size,
-            content_preview: None,
+            content_preview: if let FileContent::Preview(content) = analyzed.content {
+                Some(content)
+            } else {
+                None
+            },
         };
 
         Ok(ProcessingItem::File(enriched))
     }
 
     async fn process_directory_static(path: &std::path::Path) -> Result<ProcessingItem> {
+        // eprintln!("Processing directory: {:?}", path);
         const SAMPLE_SIZE: usize = 20;
 
         let name = path
@@ -179,8 +193,8 @@ impl FileOrganizer {
         let mut sampled_items = Vec::new();
         let mut count = 0;
 
-        if let Ok(entries) = std::fs::read_dir(path) {
-            for entry in entries.filter_map(Result::ok) {
+        if let Ok(mut entries) = tokio::fs::read_dir(path).await {
+            while let Some(entry) = entries.next_entry().await.ok().flatten() {
                 if count >= SAMPLE_SIZE {
                     break;
                 }
@@ -366,11 +380,11 @@ impl FileOrganizer {
 
         for cabinet in &plan.cabinets {
             let cabinet_path = self.base_path.join(&cabinet.name);
-            std::fs::create_dir_all(&cabinet_path)?;
+            tokio::fs::create_dir_all(&cabinet_path).await?;
 
             for shelf in &cabinet.shelves {
                 let shelf_path = cabinet_path.join(&shelf.name);
-                std::fs::create_dir_all(&shelf_path)?;
+                tokio::fs::create_dir_all(&shelf_path).await?;
             }
 
             pb.inc(1);
@@ -403,10 +417,10 @@ impl FileOrganizer {
             let to_file = to_dir.join(final_name);
 
             if movement.from.exists() {
-                std::fs::create_dir_all(&to_dir)?;
+                tokio::fs::create_dir_all(&to_dir).await?;
 
                 // Try rename first, fall back to copy+delete
-                std::fs::rename(&movement.from, &to_file).or_else(
+                tokio::fs::rename(&movement.from, &to_file).await.or_else(
                     |_| -> Result<(), std::io::Error> {
                         std::fs::copy(&movement.from, &to_file)?;
                         std::fs::remove_file(&movement.from)?;
