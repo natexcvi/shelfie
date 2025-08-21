@@ -28,19 +28,13 @@ async fn main() -> Result<()> {
                     Arg::new("directory")
                         .help("Target directory to organize")
                         .required(true)
-                        .index(1)
-                )
-                .arg(
-                    Arg::new("dry-run")
-                        .long("dry-run")
-                        .help("Show what would be done without making changes")
-                        .action(clap::ArgAction::SetTrue)
+                        .index(1),
                 )
                 .arg(
                     Arg::new("show-tree")
                         .long("show-tree")
                         .help("Show current directory tree")
-                        .action(clap::ArgAction::SetTrue)
+                        .action(clap::ArgAction::SetTrue),
                 )
                 .arg(
                     Arg::new("depth")
@@ -48,48 +42,36 @@ async fn main() -> Result<()> {
                         .short('d')
                         .help("Maximum depth to scan (1 = top-level only, default: 1)")
                         .value_parser(clap::value_parser!(usize))
-                        .default_value("1")
+                        .default_value("1"),
                 )
                 .arg(
                     Arg::new("auto-confirm")
                         .long("auto-confirm")
                         .short('y')
                         .help("Automatically confirm the organization plan without prompting")
-                        .action(clap::ArgAction::SetTrue)
-                )
+                        .action(clap::ArgAction::SetTrue),
+                ),
         )
         .subcommand(
             Command::new("config")
                 .about("Configuration management")
-                .subcommand(
-                    Command::new("edit")
-                        .about("Edit the configuration interactively")
-                )
-                .subcommand(
-                    Command::new("show")
-                        .about("Show current configuration")
-                )
+                .subcommand(Command::new("edit").about("Edit the configuration interactively"))
+                .subcommand(Command::new("show").about("Show current configuration"))
                 .subcommand(
                     Command::new("reset")
-                        .about("Reset configuration (will prompt for new settings)")
-                )
+                        .about("Reset configuration (will prompt for new settings)"),
+                ),
         )
         .arg(
             Arg::new("directory")
                 .help("Target directory to organize (default mode)")
-                .index(1)
-        )
-        .arg(
-            Arg::new("dry-run")
-                .long("dry-run")
-                .help("Show what would be done without making changes")
-                .action(clap::ArgAction::SetTrue)
+                .index(1),
         )
         .arg(
             Arg::new("show-tree")
                 .long("show-tree")
                 .help("Show current directory tree")
-                .action(clap::ArgAction::SetTrue)
+                .action(clap::ArgAction::SetTrue),
         )
         .arg(
             Arg::new("depth")
@@ -97,14 +79,14 @@ async fn main() -> Result<()> {
                 .short('d')
                 .help("Maximum depth to scan (1 = top-level only, default: 1)")
                 .value_parser(clap::value_parser!(usize))
-                .default_value("1")
+                .default_value("1"),
         )
         .arg(
             Arg::new("auto-confirm")
                 .long("auto-confirm")
                 .short('y')
                 .help("Automatically confirm the organization plan without prompting")
-                .action(clap::ArgAction::SetTrue)
+                .action(clap::ArgAction::SetTrue),
         )
         .get_matches();
 
