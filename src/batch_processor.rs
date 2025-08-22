@@ -2,14 +2,13 @@ use anyhow::{anyhow, Result};
 use chrono::Utc;
 
 use indicatif::{ProgressBar, ProgressStyle};
-use rig::client::CompletionClient;
 use std::path::PathBuf;
 use std::{collections::HashMap, time::Duration};
 
 use crate::{
     database::{Database, Item},
     models::*,
-    providers::{LLMProvider, Provider},
+    providers::LLMProvider,
 };
 
 pub struct BatchProcessor {
@@ -311,32 +310,7 @@ impl BatchProcessor {
             + Sync
             + 'static,
     {
-        match provider.get_provider() {
-            Provider::OpenAI => {
-                let client = provider.get_openai_client()?;
-                let extractor = client.extractor::<T>(provider.get_model_name()).build();
-                extractor
-                    .extract(prompt)
-                    .await
-                    .map_err(|e| anyhow!("Extraction failed: {}", e))
-            }
-            Provider::Anthropic => {
-                let client = provider.get_anthropic_client()?;
-                let extractor = client.extractor::<T>(provider.get_model_name()).build();
-                extractor
-                    .extract(prompt)
-                    .await
-                    .map_err(|e| anyhow!("Extraction failed: {}", e))
-            }
-            Provider::Ollama => {
-                let client = provider.get_ollama_client()?;
-                let extractor = client.extractor::<T>(provider.get_model_name()).build();
-                extractor
-                    .extract(prompt)
-                    .await
-                    .map_err(|e| anyhow!("Extraction failed: {}", e))
-            }
-        }
+        provider.extract(prompt).await
     }
 
     fn format_cabinets(cabinets: &[CabinetInfo]) -> String {

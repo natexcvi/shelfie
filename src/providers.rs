@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use dialoguer::{Input, Select, theme::ColorfulTheme};
-use rig::client::ProviderClient;
+use rig::client::{ProviderClient, CompletionClient};
 use rig::client::builder::{BoxAgentBuilder, DynClientBuilder};
 use rig::providers::{anthropic, ollama, openai};
 use serde::{Deserialize, Serialize};
@@ -276,14 +276,6 @@ impl LLMProvider {
         }
     }
 
-    pub fn get_openai_client(&self) -> Result<openai::Client> {
-        Ok(openai::Client::from_env())
-    }
-
-    pub fn get_anthropic_client(&self) -> Result<anthropic::Client> {
-        Ok(anthropic::Client::from_env())
-    }
-
     pub fn get_agent(&self) -> Result<BoxAgentBuilder> {
         Ok(match self.get_provider() {
             Provider::OpenAI => DynClientBuilder::new().agent("openai", self.get_model_name())?,
@@ -294,8 +286,41 @@ impl LLMProvider {
         })
     }
 
-    pub fn get_ollama_client(&self) -> Result<ollama::Client> {
-        Ok(ollama::Client::from_env())
+    pub async fn extract<T>(&self, prompt: &str) -> Result<T>
+    where
+        T: schemars::JsonSchema
+            + for<'a> serde::Deserialize<'a>
+            + serde::Serialize
+            + Send
+            + Sync
+            + 'static,
+    {
+        match self.get_provider() {
+            Provider::OpenAI => {
+                let client = openai::Client::from_env();
+                let extractor = client.extractor::<T>(self.get_model_name()).build();
+                extractor
+                    .extract(prompt)
+                    .await
+                    .map_err(|e| anyhow!("Extraction failed: {}", e))
+            }
+            Provider::Anthropic => {
+                let client = anthropic::Client::from_env();
+                let extractor = client.extractor::<T>(self.get_model_name()).build();
+                extractor
+                    .extract(prompt)
+                    .await
+                    .map_err(|e| anyhow!("Extraction failed: {}", e))
+            }
+            Provider::Ollama => {
+                let client = ollama::Client::from_env();
+                let extractor = client.extractor::<T>(self.get_model_name()).build();
+                extractor
+                    .extract(prompt)
+                    .await
+                    .map_err(|e| anyhow!("Extraction failed: {}", e))
+            }
+        }
     }
 
     pub fn get_model_name(&self) -> &str {
