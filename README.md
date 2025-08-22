@@ -4,6 +4,9 @@
 
 Transform messy directories into perfectly organized file systems with AI.
 
+<img width="1317" height="812" alt="Screenshot 2025-08-22 at 18 39 54" src="https://github.com/user-attachments/assets/270161dc-7471-4d21-ac70-e633a08ff691" />
+
+
 ## What it does
 
 - **Smart Analysis**: AI examines file content to create meaningful names and folders
