@@ -1,4 +1,7 @@
-# 📚 Shelfie - AI File Organizer
+
+<img width="150" height="150" alt="Shelfie Logo" src="https://github.com/user-attachments/assets/696191a7-d1eb-4a86-8c1d-d757127b359a" />
+
+# Shelfie - AI File Organizer
 
 Transform messy directories into perfectly organized file systems with AI.
 
