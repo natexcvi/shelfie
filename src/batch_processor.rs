@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono::Utc;
 
 use indicatif::{ProgressBar, ProgressStyle};
@@ -32,7 +32,7 @@ impl BatchProcessor {
         let total_batches = (items.len() + batch_size - 1) / batch_size;
 
         println!(
-            "📊 Processing {} items in {} batches",
+            "🤖 Processing {} items in {} batches",
             items.len(),
             total_batches
         );
@@ -197,7 +197,9 @@ impl BatchProcessor {
                     if analysis.cabinet.new_name.is_empty()
                         || analysis.cabinet.new_description.is_empty()
                     {
-                        return Err(anyhow!("new_name and new_description cannot be empty for new cabinet assignment"));
+                        return Err(anyhow!(
+                            "new_name and new_description cannot be empty for new cabinet assignment"
+                        ));
                     }
 
                     let name = &analysis.cabinet.new_name;
@@ -214,7 +216,7 @@ impl BatchProcessor {
                 _ => {
                     return Err(anyhow!(
                         "Invalid cabinet assignment_type: must be 'existing' or 'new'"
-                    ))
+                    ));
                 }
             };
 
@@ -252,7 +254,7 @@ impl BatchProcessor {
                 _ => {
                     return Err(anyhow!(
                         "Invalid shelf assignment_type: must be 'existing' or 'new'"
-                    ))
+                    ));
                 }
             };
 
