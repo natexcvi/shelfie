@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use colored::*;
-use dialoguer::{theme::ColorfulTheme, Input};
+use dialoguer::{Input, theme::ColorfulTheme};
 use rig::{
-    completion::{request::ToolDefinition, Prompt},
+    agent::Agent,
+    client::completion::CompletionModelHandle,
+    completion::{CompletionModel, Prompt, request::ToolDefinition},
     prelude::*,
     tool::Tool,
 };
@@ -519,6 +521,18 @@ impl PlanRefiner {
         user_feedback: &str,
         _current_plan: &OrganizationPlan,
     ) -> Result<()> {
+        let agent = self.build_agent(user_feedback)?;
+        let response = agent
+            .prompt("Please examine the current organization and implement the requested changes.")
+            .multi_turn(20)
+            .await?;
+        println!("\n{}", "Agent Response:".green().bold());
+        println!("{}", response);
+
+        Ok(())
+    }
+
+    fn build_agent(&self, user_feedback: &str) -> Result<Box<Agent<CompletionModelHandle<'_>>>> {
         // Create tools with database access
         let move_item_tool = MoveItemTool {
             database: Arc::clone(&self.database),
@@ -566,68 +580,21 @@ Your task:
 Please start by examining the current organization structure."#,
             user_feedback
         );
+        let agent = self
+            .provider
+            .get_agent()?
+            .preamble(&initial_prompt)
+            .max_tokens(2000)
+            .tool(list_cabinets_tool)
+            .tool(list_items_tool)
+            .tool(move_item_tool)
+            .tool(create_cabinet_tool)
+            .tool(create_shelf_tool)
+            .tool(delete_shelf_tool)
+            .tool(delete_cabinet_tool)
+            .build();
 
-        match self.provider.get_provider() {
-            Provider::OpenAI => {
-                let client = self.provider.get_openai_client()?;
-                let agent = client
-                    .agent(self.provider.get_model_name())
-                    .preamble(&initial_prompt)
-                    .max_tokens(2000)
-                    .tool(list_cabinets_tool)
-                    .tool(list_items_tool)
-                    .tool(move_item_tool)
-                    .tool(create_cabinet_tool)
-                    .tool(create_shelf_tool)
-                    .tool(delete_shelf_tool)
-                    .tool(delete_cabinet_tool)
-                    .build();
-
-                let response = agent.prompt("Please examine the current organization and implement the requested changes.").multi_turn(20).await?;
-                println!("\n{}", "Agent Response:".green().bold());
-                println!("{}", response);
-            }
-            Provider::Anthropic => {
-                let client = self.provider.get_anthropic_client()?;
-                let agent = client
-                    .agent(self.provider.get_model_name())
-                    .preamble(&initial_prompt)
-                    .max_tokens(2000)
-                    .tool(list_cabinets_tool)
-                    .tool(list_items_tool)
-                    .tool(move_item_tool)
-                    .tool(create_cabinet_tool)
-                    .tool(create_shelf_tool)
-                    .tool(delete_shelf_tool)
-                    .tool(delete_cabinet_tool)
-                    .build();
-
-                let response = agent.prompt("Please examine the current organization and implement the requested changes.").multi_turn(20).await?;
-                println!("\n{}", "Agent Response:".green().bold());
-                println!("{}", response);
-            }
-            Provider::Ollama => {
-                let client = self.provider.get_ollama_client()?;
-                let agent = client
-                    .agent(self.provider.get_model_name())
-                    .preamble(&initial_prompt)
-                    .max_tokens(2000)
-                    .tool(list_cabinets_tool)
-                    .tool(list_items_tool)
-                    .tool(move_item_tool)
-                    .tool(create_cabinet_tool)
-                    .tool(create_shelf_tool)
-                    .tool(delete_shelf_tool)
-                    .tool(delete_cabinet_tool)
-                    .build();
-
-                let response = agent.prompt("Please examine the current organization and implement the requested changes.").multi_turn(20).await?;
-                println!("\n{}", "Agent Response:".green().bold());
-                println!("{}", response);
-            }
-        }
-
-        Ok(())
+        Ok(Box::new(agent))
     }
 
     fn get_user_feedback(&self) -> Result<String> {

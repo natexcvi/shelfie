@@ -1,6 +1,7 @@
-use anyhow::{anyhow, Result};
-use dialoguer::{theme::ColorfulTheme, Input, Select};
+use anyhow::{Result, anyhow};
+use dialoguer::{Input, Select, theme::ColorfulTheme};
 use rig::client::ProviderClient;
+use rig::client::builder::{BoxAgentBuilder, DynClientBuilder};
 use rig::providers::{anthropic, ollama, openai};
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -226,9 +227,17 @@ impl LLMProvider {
             .await;
 
         match response {
-            Ok(resp) if resp.status().is_success() => {
-                let models: AnthropicModelsResponse = resp.json().await?;
-                Ok(models.models.iter().map(|m| m.name.clone()).collect())
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    let models: AnthropicModelsResponse = resp.json().await?;
+                    Ok(models.models.iter().map(|m| m.name.clone()).collect())
+                } else {
+                    Ok(vec![
+                        "claude-4-sonnet-latest".to_string(),
+                        "claude-4-haiku-latest".to_string(),
+                        "claude-4-opus-latest".to_string(),
+                    ])
+                }
             }
             _ => Ok(vec![
                 "claude-4-sonnet-latest".to_string(),
@@ -245,14 +254,20 @@ impl LLMProvider {
         let response = client.get(format!("{}/api/tags", base_url)).send().await;
 
         match response {
-            Ok(resp) if resp.status().is_success() => {
-                let models: OllamaModelsResponse = resp.json().await?;
-                if models.models.is_empty() {
-                    Err(anyhow!(
-                        "No models installed in Ollama. Run 'ollama pull <model>' first"
-                    ))
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    let models: OllamaModelsResponse = resp.json().await?;
+                    if models.models.is_empty() {
+                        Err(anyhow!(
+                            "No models installed in Ollama. Run 'ollama pull <model>' first"
+                        ))
+                    } else {
+                        Ok(models.models.iter().map(|m| m.name.clone()).collect())
+                    }
                 } else {
-                    Ok(models.models.iter().map(|m| m.name.clone()).collect())
+                    Err(anyhow!(
+                        "Cannot connect to Ollama. Make sure it's running (ollama serve)"
+                    ))
                 }
             }
             _ => Err(anyhow!(
@@ -267,6 +282,16 @@ impl LLMProvider {
 
     pub fn get_anthropic_client(&self) -> Result<anthropic::Client> {
         Ok(anthropic::Client::from_env())
+    }
+
+    pub fn get_agent(&self) -> Result<BoxAgentBuilder> {
+        Ok(match self.get_provider() {
+            Provider::OpenAI => DynClientBuilder::new().agent("openai", self.get_model_name())?,
+            Provider::Anthropic => {
+                DynClientBuilder::new().agent("anthropic", self.get_model_name())?
+            }
+            Provider::Ollama => DynClientBuilder::new().agent("ollama", self.get_model_name())?,
+        })
     }
 
     pub fn get_ollama_client(&self) -> Result<ollama::Client> {
