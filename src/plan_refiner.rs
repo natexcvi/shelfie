@@ -1,22 +1,19 @@
 use anyhow::{Context, Result};
 use colored::*;
 use dialoguer::{Input, theme::ColorfulTheme};
+use indicatif::{ProgressBar, ProgressStyle};
 use rig::{
     agent::Agent,
     client::completion::CompletionModelHandle,
-    completion::{CompletionModel, Prompt, request::ToolDefinition},
-    prelude::*,
+    completion::{Prompt, request::ToolDefinition},
     tool::Tool,
 };
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Duration};
+use tokio::sync::Mutex;
 
-use crate::{
-    database::Database,
-    models::OrganizationPlan,
-    providers::{LLMProvider, Provider},
-};
+use crate::{database::Database, models::OrganizationPlan, providers::LLMProvider};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PlanToolError {
@@ -93,6 +90,7 @@ pub struct PlanRefiner {
 // Tool definitions
 pub struct MoveItemTool {
     database: Arc<Database>,
+    progress: Arc<Mutex<ProgressBar>>,
 }
 
 impl Tool for MoveItemTool {
@@ -127,6 +125,14 @@ impl Tool for MoveItemTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        {
+            let pb = self.progress.lock().await;
+            pb.set_message(format!(
+                "Moving item {} to {}/{}",
+                args.item_id, args.target_cabinet_name, args.target_shelf_name
+            ));
+        }
+
         // Find the target cabinet and shelf
         let cabinet = self
             .database
@@ -150,6 +156,7 @@ impl Tool for MoveItemTool {
 
 pub struct CreateCabinetTool {
     database: Arc<Database>,
+    progress: Arc<Mutex<ProgressBar>>,
 }
 
 impl Tool for CreateCabinetTool {
@@ -180,6 +187,11 @@ impl Tool for CreateCabinetTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        {
+            let pb = self.progress.lock().await;
+            pb.set_message(format!("Creating cabinet '{}'", args.name));
+        }
+
         let cabinet_id = self
             .database
             .create_cabinet(&args.name, &args.description)?;
@@ -192,6 +204,7 @@ impl Tool for CreateCabinetTool {
 
 pub struct CreateShelfTool {
     database: Arc<Database>,
+    progress: Arc<Mutex<ProgressBar>>,
 }
 
 impl Tool for CreateShelfTool {
@@ -226,6 +239,14 @@ impl Tool for CreateShelfTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        {
+            let pb = self.progress.lock().await;
+            pb.set_message(format!(
+                "Creating shelf '{}' in cabinet '{}'",
+                args.name, args.cabinet_name
+            ));
+        }
+
         let cabinet = self
             .database
             .get_cabinet_by_name(&args.cabinet_name)?
@@ -243,6 +264,7 @@ impl Tool for CreateShelfTool {
 
 pub struct ListItemsTool {
     database: Arc<Database>,
+    progress: Arc<Mutex<ProgressBar>>,
 }
 
 impl Tool for ListItemsTool {
@@ -265,6 +287,11 @@ impl Tool for ListItemsTool {
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        {
+            let pb = self.progress.lock().await;
+            pb.set_message("Listing all items...".to_string());
+        }
+
         let items = self.database.list_all_items()?;
         let cabinets = self.database.list_cabinets()?;
         let shelves = self.database.list_shelves(None)?;
@@ -302,6 +329,7 @@ impl Tool for ListItemsTool {
 
 pub struct ListCabinetsTool {
     database: Arc<Database>,
+    progress: Arc<Mutex<ProgressBar>>,
 }
 
 impl Tool for ListCabinetsTool {
@@ -323,6 +351,11 @@ impl Tool for ListCabinetsTool {
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        {
+            let pb = self.progress.lock().await;
+            pb.set_message("Listing all cabinets and shelves...".to_string());
+        }
+
         let cabinets = self.database.list_cabinets()?;
         let shelves = self.database.list_shelves(None)?;
 
@@ -354,6 +387,7 @@ impl Tool for ListCabinetsTool {
 
 pub struct DeleteShelfTool {
     database: Arc<Database>,
+    progress: Arc<Mutex<ProgressBar>>,
 }
 
 impl Tool for DeleteShelfTool {
@@ -384,6 +418,14 @@ impl Tool for DeleteShelfTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        {
+            let pb = self.progress.lock().await;
+            pb.set_message(format!(
+                "Deleting shelf '{}' from cabinet '{}'",
+                args.shelf_name, args.cabinet_name
+            ));
+        }
+
         let cabinet = self
             .database
             .get_cabinet_by_name(&args.cabinet_name)?
@@ -417,6 +459,7 @@ impl Tool for DeleteShelfTool {
 
 pub struct DeleteCabinetTool {
     database: Arc<Database>,
+    progress: Arc<Mutex<ProgressBar>>,
 }
 
 impl Tool for DeleteCabinetTool {
@@ -443,6 +486,11 @@ impl Tool for DeleteCabinetTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        {
+            let pb = self.progress.lock().await;
+            pb.set_message(format!("Deleting cabinet '{}'", args.name));
+        }
+
         let cabinet = self
             .database
             .get_cabinet_by_name(&args.name)?
@@ -491,8 +539,23 @@ impl PlanRefiner {
                 "Analyzing feedback and refining plan...".cyan().bold()
             );
 
+            // Create progress spinner
+            let progress_bar = ProgressBar::new_spinner();
+            progress_bar.set_style(
+                ProgressStyle::default_spinner()
+                    .template("{spinner:.green} {msg}")
+                    .unwrap(),
+            );
+            progress_bar.set_message("Starting plan refinement...");
+            progress_bar.enable_steady_tick(Duration::from_millis(200));
+
+            let progress_arc = Arc::new(Mutex::new(progress_bar));
+
             // Create agent with database tools
-            match self.refine_with_agent(&user_feedback, current_plan).await {
+            match self
+                .refine_with_agent(&user_feedback, current_plan, progress_arc.clone())
+                .await
+            {
                 Ok(_) => {
                     // Generate new plan from updated database
                     let new_plan = self.create_updated_organization_plan()?;
@@ -509,6 +572,10 @@ impl PlanRefiner {
                     }
                 }
                 Err(e) => {
+                    {
+                        let pb = progress_arc.lock().await;
+                        pb.finish_with_message("✗ Plan refinement failed");
+                    }
                     eprintln!("{}: Failed to refine plan: {}", "Error".red().bold(), e);
                     println!("Let's try again with different feedback.");
                 }
@@ -520,40 +587,58 @@ impl PlanRefiner {
         &self,
         user_feedback: &str,
         _current_plan: &OrganizationPlan,
+        progress_bar: Arc<Mutex<ProgressBar>>,
     ) -> Result<()> {
-        let agent = self.build_agent(user_feedback)?;
+        let agent = self.build_agent(user_feedback, progress_bar.clone())?;
         let response = agent
             .prompt("Please examine the current organization and implement the requested changes.")
             .multi_turn(20)
             .await?;
+
+        {
+            let pb = progress_bar.lock().await;
+            pb.finish_with_message("✓ Plan refinement complete");
+        }
+
         println!("\n{}", "Agent Response:".green().bold());
         println!("{}", response);
 
         Ok(())
     }
 
-    fn build_agent(&self, user_feedback: &str) -> Result<Box<Agent<CompletionModelHandle<'_>>>> {
+    fn build_agent(
+        &self,
+        user_feedback: &str,
+        progress_bar: Arc<Mutex<ProgressBar>>,
+    ) -> Result<Box<Agent<CompletionModelHandle<'_>>>> {
         // Create tools with database access
         let move_item_tool = MoveItemTool {
             database: Arc::clone(&self.database),
+            progress: Arc::clone(&progress_bar),
         };
         let create_cabinet_tool = CreateCabinetTool {
             database: Arc::clone(&self.database),
+            progress: Arc::clone(&progress_bar),
         };
         let create_shelf_tool = CreateShelfTool {
             database: Arc::clone(&self.database),
+            progress: Arc::clone(&progress_bar),
         };
         let list_items_tool = ListItemsTool {
             database: Arc::clone(&self.database),
+            progress: Arc::clone(&progress_bar),
         };
         let list_cabinets_tool = ListCabinetsTool {
             database: Arc::clone(&self.database),
+            progress: Arc::clone(&progress_bar),
         };
         let delete_shelf_tool = DeleteShelfTool {
             database: Arc::clone(&self.database),
+            progress: Arc::clone(&progress_bar),
         };
         let delete_cabinet_tool = DeleteCabinetTool {
             database: Arc::clone(&self.database),
+            progress: Arc::clone(&progress_bar),
         };
 
         let initial_prompt = format!(

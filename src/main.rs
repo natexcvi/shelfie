@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
                     Arg::new("depth")
                         .long("depth")
                         .short('d')
-                        .help("Maximum depth to scan (1 = top-level only, default: 1)")
+                        .help("Maximum depth to scan (1 = top-level only)")
                         .value_parser(clap::value_parser!(usize))
                         .default_value("1"),
                 )
@@ -78,7 +78,7 @@ async fn main() -> Result<()> {
             Arg::new("depth")
                 .long("depth")
                 .short('d')
-                .help("Maximum depth to scan (1 = top-level only, default: 1)")
+                .help("Maximum depth to scan (1 = top-level only)")
                 .value_parser(clap::value_parser!(usize))
                 .default_value("1"),
         )
@@ -261,7 +261,7 @@ async fn config_show() -> Result<()> {
 }
 
 async fn config_reset() -> Result<()> {
-    use dialoguer::{theme::ColorfulTheme, Confirm};
+    use dialoguer::{Confirm, theme::ColorfulTheme};
 
     let config_path = Config::get_config_file_path()?;
 

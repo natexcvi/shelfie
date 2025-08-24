@@ -187,7 +187,6 @@ impl FileOrganizer {
     }
 
     async fn process_file_static(path: &std::path::Path) -> Result<ProcessingItem> {
-        // eprintln!("Processing file: {:?}", path);
         let analyzed = AnalyzedFile::new(path.to_path_buf())
             .await
             .context("Failed to analyze file")?;
@@ -209,7 +208,6 @@ impl FileOrganizer {
     }
 
     async fn process_directory_static(path: &std::path::Path) -> Result<ProcessingItem> {
-        // eprintln!("Processing directory: {:?}", path);
         const SAMPLE_SIZE: usize = 20;
 
         let name = path
