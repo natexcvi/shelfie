@@ -17,6 +17,8 @@ pub struct BatchProcessor {
 }
 
 impl BatchProcessor {
+    const MAX_EXTRACTION_RETRIES: usize = 3;
+
     pub fn new(provider: LLMProvider, base_path: PathBuf) -> Self {
         Self {
             provider,
@@ -133,12 +135,28 @@ impl BatchProcessor {
                 .collect(),
         };
 
-        // Call LLM for batch analysis
-        let response = Self::analyze_batch_with_llm_static(provider, &request).await?;
+        for i in 0..Self::MAX_EXTRACTION_RETRIES {
+            match Self::extract_and_store_items(provider, &request, &items, database).await {
+                Ok(()) => break,
+                Err(e) => {
+                    if i == Self::MAX_EXTRACTION_RETRIES - 1 {
+                        return Err(e);
+                    }
+                }
+            }
+        }
 
-        // Process response and update database
-        Self::store_batch_results_static(database, &items, &response).await?;
+        Ok(())
+    }
 
+    async fn extract_and_store_items(
+        provider: &LLMProvider,
+        request: &BatchAnalysisRequest,
+        items: &Vec<ProcessingItem>,
+        database: &Database,
+    ) -> Result<()> {
+        let response = Self::analyze_batch_with_llm_static(provider, request).await?;
+        Self::store_batch_results_static(database, items, &response).await?;
         Ok(())
     }
 
