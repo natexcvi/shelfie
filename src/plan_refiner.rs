@@ -593,6 +593,7 @@ impl PlanRefiner {
         let response = agent
             .prompt("Please examine the current organization and implement the requested changes.")
             .multi_turn(20)
+            .extended_details()
             .await?;
 
         {
@@ -601,7 +602,7 @@ impl PlanRefiner {
         }
 
         println!("\n{}", "Agent Response:".green().bold());
-        println!("{}", response);
+        println!("{}", response.output);
 
         Ok(())
     }
@@ -660,7 +661,7 @@ Your task:
 1. First, understand the current organization by listing cabinets and items
 2. Based on the user's feedback, determine what changes need to be made
 3. Use the available tools to implement those changes
-4. Provide a clear explanation of what you did and why
+4. Provide a clear and concise explanation of what you did and why. Keep it short and sweet.
 
 Please start by examining the current organization structure."#,
             user_feedback
@@ -669,7 +670,7 @@ Please start by examining the current organization structure."#,
             .provider
             .get_agent()?
             .preamble(&initial_prompt)
-            .max_tokens(2000)
+            .max_tokens(8192)
             .tool(list_cabinets_tool)
             .tool(list_items_tool)
             .tool(move_item_tool)
