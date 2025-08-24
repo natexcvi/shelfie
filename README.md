@@ -1,9 +1,11 @@
-
-<img width="150" height="150" alt="Shelfie Logo" src="https://github.com/user-attachments/assets/696191a7-d1eb-4a86-8c1d-d757127b359a" />
+<img width="150" height="150" alt="Shelfie Logo" src="https://github.com/user-attachments/assets/bbe1585f-3382-4e46-99e4-58b247185012" />
 
 # Shelfie - AI File Organizer
 
 Transform messy directories into perfectly organized file systems with AI.
+
+<img width="1317" height="812" alt="Screenshot 2025-08-22 at 18 39 54" src="https://github.com/user-attachments/assets/270161dc-7471-4d21-ac70-e633a08ff691" />
+
 
 ## What it does
 
