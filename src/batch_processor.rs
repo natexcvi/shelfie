@@ -174,7 +174,7 @@ impl BatchProcessor {
         Self::extract_with_prompt_static(provider, &prompt).await
     }
 
-    async fn store_batch_results_static(
+    pub async fn store_batch_results_static(
         database: &Database,
         items: &[ProcessingItem],
         response: &BatchAnalysisResponse,
@@ -434,3 +434,6 @@ impl BatchProcessor {
         false
     }
 }
+
+#[cfg(test)]
+mod tests;

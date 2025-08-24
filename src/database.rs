@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -83,7 +83,9 @@ impl Database {
     }
 
     fn get_conn(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>> {
-        self.pool.get().context("Failed to get connection from pool")
+        self.pool
+            .get()
+            .context("Failed to get connection from pool")
     }
 
     fn initialize_schema(&self) -> Result<()> {
@@ -149,8 +151,8 @@ impl Database {
 
     pub fn get_cabinet_by_name(&self, name: &str) -> Result<Option<Cabinet>> {
         let conn = self.get_conn()?;
-        let mut stmt = conn
-            .prepare("SELECT id, name, description, created_at FROM cabinets WHERE name = ?1")?;
+        let mut stmt =
+            conn.prepare("SELECT id, name, description, created_at FROM cabinets WHERE name = ?1")?;
 
         stmt.query_row(params![name], |row| {
             Ok(Cabinet {
@@ -168,8 +170,8 @@ impl Database {
 
     pub fn list_cabinets(&self) -> Result<Vec<Cabinet>> {
         let conn = self.get_conn()?;
-        let mut stmt = conn
-            .prepare("SELECT id, name, description, created_at FROM cabinets ORDER BY name")?;
+        let mut stmt =
+            conn.prepare("SELECT id, name, description, created_at FROM cabinets ORDER BY name")?;
 
         let cabinets = stmt
             .query_map([], |row| {
@@ -280,7 +282,7 @@ impl Database {
         suggested_name: &str,
     ) -> Result<()> {
         self.get_conn()?.execute(
-            "UPDATE items SET description = ?1, suggested_name = ?2, needs_content_read = 0
+            "UPDATE items SET description = ?1, suggested_name = ?2
              WHERE id = ?3",
             params![description, suggested_name, item_id],
         )?;
@@ -383,8 +385,7 @@ impl Database {
 
     pub fn get_processing_state(&self, key: &str) -> Result<Option<String>> {
         let conn = self.get_conn()?;
-        let mut stmt = conn
-            .prepare("SELECT value FROM processing_state WHERE key = ?1")?;
+        let mut stmt = conn.prepare("SELECT value FROM processing_state WHERE key = ?1")?;
 
         stmt.query_row(params![key], |row| row.get(0))
             .optional()
@@ -438,10 +439,8 @@ impl Database {
             return Err(anyhow::anyhow!("Cannot delete cabinet: contains shelves"));
         }
 
-        self.get_conn()?.execute(
-            "DELETE FROM cabinets WHERE id = ?1",
-            params![cabinet_id],
-        )?;
+        self.get_conn()?
+            .execute("DELETE FROM cabinets WHERE id = ?1", params![cabinet_id])?;
         Ok(())
     }
 
@@ -457,10 +456,11 @@ impl Database {
             return Err(anyhow::anyhow!("Cannot delete shelf: contains items"));
         }
 
-        self.get_conn()?.execute(
-            "DELETE FROM shelves WHERE id = ?1",
-            params![shelf_id],
-        )?;
+        self.get_conn()?
+            .execute("DELETE FROM shelves WHERE id = ?1", params![shelf_id])?;
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

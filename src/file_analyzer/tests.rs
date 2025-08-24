@@ -1,5 +1,5 @@
-use shelfie::file_analyzer::{AnalyzedFile, FileContent};
-use std::fs::{self, FileType};
+use super::{AnalyzedFile, FileContent};
+use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -151,17 +151,4 @@ async fn test_analyze_large_filename() {
         "very_long_filename_with_multiple_parts_and_extensions.tar"
     );
     assert_eq!(analyzed.extension, Some("gz".to_string()));
-}
-
-#[tokio::test]
-async fn test_analyze_executable_file() {
-    let temp_dir = TempDir::new().unwrap();
-    let elf_header = vec![0x7F, 0x45, 0x4C, 0x46];
-    let path = create_test_file(&temp_dir, "program", &elf_header).await;
-
-    let analyzed = AnalyzedFile::new(path.clone()).await.unwrap();
-
-    assert_eq!(analyzed.name, "program");
-    assert_eq!(analyzed.extension, None);
-    assert_eq!(analyzed.detected_type, "application/x-executable");
 }

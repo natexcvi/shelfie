@@ -99,3 +99,6 @@ impl AnalyzedFile {
         return self.detected_type.to_string();
     }
 }
+
+#[cfg(test)]
+mod tests;

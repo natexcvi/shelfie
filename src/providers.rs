@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use dialoguer::{Input, Select, theme::ColorfulTheme};
-use rig::client::{ProviderClient, CompletionClient};
 use rig::client::builder::{BoxAgentBuilder, DynClientBuilder};
+use rig::client::{CompletionClient, ProviderClient};
 use rig::providers::{anthropic, ollama, openai};
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -13,6 +13,8 @@ pub enum Provider {
     OpenAI,
     Anthropic,
     Ollama,
+    #[cfg(test)]
+    Mock(Vec<String>),
 }
 
 impl std::fmt::Display for Provider {
@@ -21,6 +23,8 @@ impl std::fmt::Display for Provider {
             Provider::OpenAI => write!(f, "OpenAI"),
             Provider::Anthropic => write!(f, "Anthropic"),
             Provider::Ollama => write!(f, "Ollama (Local)"),
+            #[cfg(test)]
+            Provider::Mock(_) => write!(f, "Mock Provider"),
         }
     }
 }
@@ -60,9 +64,19 @@ struct OllamaModelsResponse {
 pub struct LLMProvider {
     provider: Provider,
     model_name: String,
+    mock_call_count: std::sync::Arc<std::sync::Mutex<usize>>,
 }
 
 impl LLMProvider {
+    #[cfg(test)]
+    pub fn new_mock(responses: Vec<String>) -> Self {
+        Self {
+            provider: Provider::Mock(responses),
+            model_name: "mock-model".to_string(),
+            mock_call_count: std::sync::Arc::new(std::sync::Mutex::new(0)),
+        }
+    }
+
     pub async fn new() -> Result<Self> {
         // Try to load existing config first
         if let Some(config) = Config::load()? {
@@ -77,6 +91,7 @@ impl LLMProvider {
             return Ok(Self {
                 provider: config.provider,
                 model_name: config.model_name,
+                mock_call_count: std::sync::Arc::new(std::sync::Mutex::new(0)),
             });
         }
 
@@ -101,6 +116,7 @@ impl LLMProvider {
         Ok(Self {
             provider,
             model_name,
+            mock_call_count: std::sync::Arc::new(std::sync::Mutex::new(0)),
         })
     }
 
@@ -124,6 +140,10 @@ impl LLMProvider {
                     )
                 })?;
             }
+            #[cfg(test)]
+            Provider::Mock(_) => {
+                // Mock provider doesn't need validation
+            }
         }
         Ok(())
     }
@@ -143,6 +163,7 @@ impl LLMProvider {
         Ok(Self {
             provider,
             model_name,
+            mock_call_count: std::sync::Arc::new(std::sync::Mutex::new(0)),
         })
     }
 
@@ -182,6 +203,8 @@ impl LLMProvider {
             Provider::OpenAI => Self::list_openai_models().await,
             Provider::Anthropic => Self::list_anthropic_models().await,
             Provider::Ollama => Self::list_ollama_models().await,
+            #[cfg(test)]
+            Provider::Mock(_) => Ok(vec!["mock-model".to_string()]),
         }
     }
 
@@ -283,10 +306,14 @@ impl LLMProvider {
                 DynClientBuilder::new().agent("anthropic", self.get_model_name())?
             }
             Provider::Ollama => DynClientBuilder::new().agent("ollama", self.get_model_name())?,
+            #[cfg(test)]
+            Provider::Mock(_) => {
+                return Err(anyhow!("Mock provider doesn't support agent creation"));
+            }
         })
     }
 
-    pub async fn extract<T>(&self, prompt: &str) -> Result<T>
+    pub async fn extract<T>(&self, _prompt: &str) -> Result<T>
     where
         T: schemars::JsonSchema
             + for<'a> serde::Deserialize<'a>
@@ -300,7 +327,7 @@ impl LLMProvider {
                 let client = openai::Client::from_env();
                 let extractor = client.extractor::<T>(self.get_model_name()).build();
                 extractor
-                    .extract(prompt)
+                    .extract(_prompt)
                     .await
                     .map_err(|e| anyhow!("Extraction failed: {}", e))
             }
@@ -308,7 +335,7 @@ impl LLMProvider {
                 let client = anthropic::Client::from_env();
                 let extractor = client.extractor::<T>(self.get_model_name()).build();
                 extractor
-                    .extract(prompt)
+                    .extract(_prompt)
                     .await
                     .map_err(|e| anyhow!("Extraction failed: {}", e))
             }
@@ -316,9 +343,23 @@ impl LLMProvider {
                 let client = ollama::Client::from_env();
                 let extractor = client.extractor::<T>(self.get_model_name()).build();
                 extractor
-                    .extract(prompt)
+                    .extract(_prompt)
                     .await
                     .map_err(|e| anyhow!("Extraction failed: {}", e))
+            }
+            #[cfg(test)]
+            Provider::Mock(responses) => {
+                let mut count = self.mock_call_count.lock().unwrap();
+                let response_index = (*count).min(responses.len().saturating_sub(1));
+                *count += 1;
+
+                if responses.is_empty() {
+                    return Err(anyhow!("No mock responses configured"));
+                }
+
+                let json_response = &responses[response_index];
+                serde_json::from_str(json_response)
+                    .map_err(|e| anyhow!("Failed to parse mock response: {}", e))
             }
         }
     }
