@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use colored::*;
-use dialoguer::{theme::ColorfulTheme, Confirm};
+use dialoguer::{Confirm, theme::ColorfulTheme};
 
 use indicatif::{ProgressBar, ProgressStyle};
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -10,7 +10,7 @@ use walkdir::WalkDir;
 
 use crate::{
     batch_processor::BatchProcessor,
-    database::{Database, DB_NAME},
+    database::{DB_NAME, Database},
     file_analyzer::{AnalyzedFile, FileContent},
     models::{
         CabinetPlan, EnrichedDirectory, EnrichedFile, FileMovement, OrganizationPlan,
@@ -78,7 +78,7 @@ impl FileOrganizer {
             // First ask if they want to proceed with the current plan
             let initial_confirm = Confirm::with_theme(&ColorfulTheme::default())
                 .with_prompt(
-                    "Do you want to proceed with this organization (if not, I can modify it)?",
+                    "Do you want to proceed with this organization? (if not, I can modify it)",
                 )
                 .interact()?;
 
