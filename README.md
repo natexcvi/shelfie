@@ -21,14 +21,12 @@ Transform messy directories into perfectly organized file systems with AI.
 ## Installation
 
 ```bash
-# Install from GitHub
-cargo install --git https://github.com/natexcvi/shelfie
-
-# Or clone and build
 git clone https://github.com/natexcvi/shelfie
 cd shelfie
 cargo install --path .
 ```
+
+If you don't have a Rust toolchain installed, you can install it using [rustup](https://rustup.rs/).
 
 ## Quick Start
 
